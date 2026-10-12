@@ -59,16 +59,16 @@ def run_sample(sample: dict, runner: AgentRunner | None = None) -> dict:
 def check(expected: dict, obs: dict) -> list[str]:
     errs = []
     if obs["status"] != "done":
-        errs.append(f"flow chưa kết thúc (đang ở: {obs['status']})")
+        errs.append(f"flow did not finish (stuck at: {obs['status']})")
     if "max_turns" in expected and obs["turns"] > expected["max_turns"]:
-        errs.append(f"hỏi {obs['turns']} lượt > {expected['max_turns']}")
+        errs.append(f"asked {obs['turns']} turns > {expected['max_turns']}")
     if "gap_types" in expected and sorted(expected["gap_types"]) != obs["gap_types"]:
-        errs.append(f"gap {obs['gap_types']} != kỳ vọng {sorted(expected['gap_types'])}")
+        errs.append(f"gap {obs['gap_types']} != expected {sorted(expected['gap_types'])}")
     if "data_already_available" in expected and expected["data_already_available"] != obs["data_already_available"]:
         errs.append(f"data_already_available={obs['data_already_available']}")
     for src, name in (expected.get("recommendation") or {}).items():
         if obs["recommendation"].get(src) != name:
-            errs.append(f"{src}: đề xuất {obs['recommendation'].get(src)} != {name}")
+            errs.append(f"{src}: recommended {obs['recommendation'].get(src)} != {name}")
     if "final_date_start" in expected and obs["request"].get("date_range", {}).get("start") != expected["final_date_start"]:
         errs.append(f"date_range.start={obs['request'].get('date_range')}")
     if "final_eta" in expected and obs["request"].get("eta") != expected["final_eta"]:
@@ -79,7 +79,7 @@ def check(expected: dict, obs: dict) -> list[str]:
 def main(folder: Path) -> int:
     files = sorted(folder.glob("*.yaml"))
     if not files:
-        print(f"Không có sample nào trong {folder}")
+        print(f"No samples in {folder}")
         return 1
     failed = 0
     for path in files:
@@ -89,7 +89,7 @@ def main(folder: Path) -> int:
         ok = not res["mismatches"]
         failed += not ok
         print(f"{'PASS' if ok else 'FAIL'}  {path.name} — {sample.get('name', '')}")
-        print(f"      lượt hỏi={obs['turns']} gap={obs['gap_types']} đề xuất={obs['recommendation']}")
+        print(f"      turns={obs['turns']} gap={obs['gap_types']} recommended={obs['recommendation']}")
         if obs["outputs"].get("user_story"):
             print(f"      US: {obs['outputs']['user_story']}")
         for m in res["mismatches"]:

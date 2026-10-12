@@ -36,4 +36,4 @@ if __name__ == "__main__":
         origin = f"github:{args.github}@{args.ref}/{args.subdir}"
 
     out = catalog_sync.save_catalog(models, origin, args.out)
-    print(f"Đã export {len(models)} model -> {out}")
+    print(f"Exported {len(models)} models -> {out}")

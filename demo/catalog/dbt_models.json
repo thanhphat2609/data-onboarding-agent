@@ -1,12 +1,12 @@
 {
-  "_note": "DEMO DATA — xoá thư mục demo/ khi đã có catalog thật (scripts/export_dbt_catalog.py -> catalog/dbt_models.json).",
+  "_note": "DEMO DATA — delete the demo/ folder once a real catalog exists (sync via the UI or scripts/export_dbt_catalog.py -> catalog/dbt_models.json).",
   "generated_at": "2026-10-12",
   "models": [
     {
       "name": "stg_ga4__events",
       "source": "ga4",
       "layer": "staging",
-      "description": "Event-level GA4 data từ BigQuery export, đã chuẩn hoá tên cột.",
+      "description": "Event-level GA4 data from the BigQuery export, with standardized column names.",
       "grain": "event",
       "columns": [
         "event_date",
@@ -28,7 +28,7 @@
       "name": "fct_ga4__sessions_daily",
       "source": "ga4",
       "layer": "mart",
-      "description": "Sessions, users, engaged sessions và conversions GA4 theo ngày, source/medium và campaign.",
+      "description": "GA4 sessions, users, engaged sessions and conversions by day, source/medium and campaign.",
       "grain": "date x source x medium x campaign",
       "columns": [
         "date",
@@ -53,7 +53,7 @@
       "name": "stg_appsflyer__installs",
       "source": "appsflyer",
       "layer": "staging",
-      "description": "Install attribution từ AppsFlyer: media source, campaign, install time.",
+      "description": "AppsFlyer install attribution: media source, campaign, install time.",
       "grain": "install",
       "columns": [
         "install_time",

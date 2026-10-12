@@ -1,18 +1,18 @@
-# DEMO DATA — chỉ để chạy thử, không phải thông tin thật của team.
+# DEMO DATA — for trying the agent only, not the team's real information.
 source: appsflyer
 display_name: AppsFlyer
 review_status: draft
 access_methods:
   - type: data_locker
-    available_from: "2024-01-01"   # VÍ DỤ: ngày bật Data Locker
+    available_from: "2024-01-01"   # EXAMPLE: date Data Locker was enabled
     max_lookback_days: null
     typical_lead_time_days: 7
-    notes: "TODO: xác nhận retention của Data Locker theo gói hợp đồng."
+    notes: "TODO: confirm Data Locker retention for our contract tier."
   - type: pull_api
     available_from: null
-    max_lookback_days: 90          # TODO: xác nhận giới hạn lịch sử của Pull API raw data theo tài liệu/gói
+    max_lookback_days: 90          # TODO: confirm the Pull API raw-data history limit from docs/contract
     typical_lead_time_days: 5
-    notes: "Raw data report qua Pull API, có rate limit."
+    notes: "Raw data reports via Pull API, rate limited."
 current_connector: "TODO"
 existing_models: [stg_appsflyer__installs]
 owner: "TODO"

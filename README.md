@@ -2,199 +2,202 @@
 
 An AI agent that turns data requests into ready-to-build work: it gathers requirements from users step by step, checks existing data and source feasibility (availability, date range, ETA), notifies the data team on Teams, and drafts user stories with a pipeline proposal — with human approval at every key step.
 
-Kế hoạch chi tiết: xem `PLAN.md` (bản plan prototype).
+Detailed plan: see `PLAN.md` (prototype plan).
+
+> The agent talks to users in Vietnamese (questions, UI labels, User Story, Teams messages). Code, comments and docs are in English.
 
 ---
 
-## Trạng thái các phase
+## Phase status
 
-> Cập nhật: 2026-10-12. ✅ xong · 🟡 có code, chưa chạy/kiểm chứng ở môi trường thật · ⬜ chưa làm
+> Updated: 2026-10-12. ✅ done · 🟡 code exists, not yet run/verified in the real environment · ⬜ not started
 
 ### Phase 0 – Setup
-- ✅ Repo + cấu trúc thư mục
-- 🟡 Notebook [notebooks/prototype.ipynb](notebooks/prototype.ipynb): mount Drive, cài Ollama, pull model, test chat — **đã viết, chưa chạy trên Colab**
-- 🟡 Test model gọi tool (`lookup_playbook`, `search_catalog`) — cell có sẵn trong notebook, chưa chạy
-- ⬜ Chọn model 7B vs 14B — cần chạy cell so sánh trên Colab T4
+- ✅ Repo + folder structure
+- 🟡 Notebook [notebooks/prototype.ipynb](notebooks/prototype.ipynb): clone the private repo (token from Colab Secrets), install Ollama, pull models, test chat — **written, not yet run on Colab**
+- 🟡 Tool-calling test (`lookup_playbook`, `search_catalog`) — cell is in the notebook, not yet run
+- ⬜ Pick 7B vs 14B — run the comparison cell on a Colab T4
 
 ### Phase 1 – Intake ✅
-- ✅ `state.py` + schema request (7 field bắt buộc)
-- ✅ Node `intake`: hỏi field còn thiếu (tối đa 3 field/lượt), validate date range, ETA sau hôm nay, tần suất hợp lệ
-- ✅ Web UI Gradio ([app.py](app.py)), mỗi phiên = 1 `thread_id`, có nút Duyệt / Sửa, tiếp tục phiên cũ bằng `thread_id`, panel **LLM settings** để chọn host/model/API key ngay trên app (gọi được model host trên Colab)
-- ✅ Checkpointer `SqliteSaver`, đã test "restart rồi chạy tiếp" ở local (tạo runner mới trên cùng file `.db`). 🟡 Chưa test với file `.db` trên Google Drive.
+- ✅ `state.py` + request schema (7 required fields)
+- ✅ `intake` node: asks for missing fields (max 3 per turn), validates date range, ETA after today, valid refresh frequency
+- ✅ Gradio web UI ([app.py](app.py)): one session = one `thread_id`, Approve / Edit buttons, resume an old session by `thread_id`, **LLM settings** panel to pick host/model/API key in the app (can call a Colab-hosted model)
+- ✅ `SqliteSaver` checkpointer, "restart and continue" tested locally (new runner on the same `.db` file). 🟡 Not yet tested with a `.db` file on Google Drive.
 
 ### Phase 2 – Knowledge
-- 🟡 Playbook: mới có **playbook DEMO** cho GA4 và AppsFlyer trong `demo/playbooks/`. ⬜ Team viết playbook thật cho 7 nguồn vào `playbooks/` (GSC đang làm riêng).
-- ✅ Sync catalog dbt từ **GitHub (token)**, thư mục dbt project local, hoặc `manifest.json` — trên web UI (📦 dbt catalog) hoặc [scripts/export_dbt_catalog.py](scripts/export_dbt_catalog.py). Đã test với repo public `dbt-labs/jaffle_shop`. ⬜ Chưa sync repo dbt thật của team — đang dùng catalog DEMO.
-- ✅ Tool `lookup_playbook(source)` và `search_catalog(query)` ([agent/knowledge.py](agent/knowledge.py))
+- 🟡 Playbooks: only **DEMO playbooks** for GA4 and AppsFlyer in `demo/playbooks/`. ⬜ Team writes real playbooks for the 7 sources in `playbooks/` (GSC in progress separately).
+- ✅ dbt catalog sync from **GitHub (token)**, a local dbt project folder, or `manifest.json` — from the web UI (📦 dbt catalog) or [scripts/export_dbt_catalog.py](scripts/export_dbt_catalog.py). Tested with the public repo `dbt-labs/jaffle_shop`. ⬜ Team's real dbt repo not synced yet — still on the DEMO catalog.
+- ✅ Tools `lookup_playbook(source)` and `search_catalog(query)` ([agent/knowledge.py](agent/knowledge.py))
 
 ### Phase 3 – Feasibility ✅
-- ✅ Node `catalog_check`: tìm model dbt liên quan theo từng nguồn
-- ✅ Node `feasibility`: so date range yêu cầu với `available_from` / `max_lookback_days` của từng access method, cảnh báo ETA gấp theo `typical_lead_time_days`
-- ✅ Có gap (date range / nguồn chưa có playbook) → quay về `intake` hỏi user chấp nhận hoặc đổi phương án
-- ✅ Đề xuất hướng lấy data: ưu tiên model có sẵn → các access method trong playbook
+- ✅ `catalog_check` node: finds related dbt models per source
+- ✅ `feasibility` node: compares the requested date range with each access method's `available_from` / `max_lookback_days`, warns about tight ETAs using `typical_lead_time_days`
+- ✅ Gap (date range / source without a playbook) → back to `intake` to ask the user to accept or pick an alternative
+- ✅ Data access proposal: existing model first → access methods from the playbook
 
 ### Phase 4 – Approval + Output ✅
-- ✅ Approval dừng chờ người duyệt (dùng `interrupt()` trong node — tương đương `interrupt_before=["approval"]` nhưng nhận được dữ liệu Duyệt/Sửa khi resume). Sửa → quay về intake cập nhật request → kiểm tra khả thi lại.
-- ✅ Node `draft_us`: User Story theo template (title, user story, mô tả, nguồn & khả thi, pipeline đề xuất, acceptance criteria, rủi ro, nguồn thông tin)
-- ✅ Node `summary`: tin tổng hợp cuối
-- ✅ Output ghi vào `outputs/<request_id>/`: `request.json`, `feasibility.json`, `user_story.md`, `summary.md`
+- ✅ Approval pauses for a reviewer (uses `interrupt()` inside the node — equivalent to `interrupt_before=["approval"]`, but receives the Approve/Edit payload on resume). Edit → back to intake to update the request → feasibility re-checked.
+- ✅ `draft_us` node: User Story from a template (title, user story, description, sources & feasibility, proposed pipeline, acceptance criteria, risks, information sources)
+- ✅ `summary` node: final summary message
+- ✅ Outputs written to `outputs/<request_id>/`: `request.json`, `feasibility.json`, `user_story.md`, `summary.md`
 
 ### Phase 5 – Teams + Demo
-- 🟡 Gửi tin qua Teams Workflows webhook (notify + summary, Adaptive Card) — có code, **chưa test với webhook thật**. Không đặt `TEAMS_WEBHOOK_URL` thì mock: ghi `outputs/<request_id>/teams_messages.jsonl`.
-- 🟡 5 kịch bản request **DEMO** trong `demo/sample_requests/` (5/5 pass). ⬜ Cần 3–5 request thật cũ (cùng format YAML, đặt vào thư mục riêng, vd. `sample_requests/`).
-- ⬜ So output của agent với cách team đã xử lý thật, ghi lại chỗ sai
-- ⬜ Demo cho team
+- 🟡 Teams Workflows webhook (notify + summary, Adaptive Card) — code exists, **not tested with a real webhook**. Without `TEAMS_WEBHOOK_URL` it mocks by writing `outputs/<request_id>/teams_messages.jsonl`.
+- 🟡 5 **DEMO** request scenarios in `demo/sample_requests/` (5/5 pass). ⬜ Need 3–5 real past requests (same YAML format, in their own folder, e.g. `sample_requests/`).
+- ⬜ Compare agent output with how the team actually handled them, log the mistakes
+- ⬜ Demo to the team
 
-### Việc tiếp theo
-1. Chạy notebook trên Colab: test tool calling, chọn model, host model cho web app trên máy (bước 4).
-2. Sync catalog từ repo dbt thật (📦 dbt catalog); team viết playbook thật vào `playbooks/`.
-3. Viết request thật cũ theo format trong `demo/sample_requests/`, chạy `python scripts/run_samples.py <thư mục>`.
-4. Gắn webhook Teams thật.
+### Next steps
+1. Run the notebook on Colab: tool-calling test, pick a model, host the model for the local web app (step 4).
+2. Sync the catalog from the real dbt repo (📦 dbt catalog); team writes real playbooks in `playbooks/`.
+3. Write real past requests in the `demo/sample_requests/` format, run `python scripts/run_samples.py <folder>`.
+4. Hook up the real Teams webhook.
 
 ---
 
-## Kiến trúc
+## Architecture
 
 ```
-intake ⇄ ask_user   (hỏi đến khi đủ field / xử lý xong gap)
+intake ⇄ ask_user   (ask until all fields are filled / gaps are resolved)
   │
   ▼
 notify ─▶ catalog_check ─▶ feasibility ──gap──▶ intake
                                │
                                ▼
-                           approval ──Sửa──▶ intake
-                               │ Duyệt
+                           approval ──edit──▶ intake
+                               │ approve
                                ▼
                            draft_us ─▶ summary ─▶ END
 ```
 
-- **Logic rẽ nhánh và đánh giá khả thi nằm hoàn toàn trong code.** LLM chỉ trích field từ câu trả lời tự do, diễn đạt câu hỏi và viết title/description cho User Story.
-- **LLM là tùy chọn**: không đặt `OLLAMA_MODEL` (hoặc Ollama không chạy) thì agent dùng parser rule-based. Test và demo local chạy được mà không cần GPU.
-- Mọi đề xuất trong User Story đều ghi rõ lấy từ playbook/catalog nào.
+- **Branching and feasibility logic live entirely in code.** The LLM only extracts fields from free-text answers, phrases questions, and writes the User Story title/description.
+- **The LLM is optional**: without `OLLAMA_MODEL` (or if Ollama is down) the agent uses a rule-based parser, so local demos run without a GPU.
+- Every proposal in the User Story cites the playbook/catalog it came from.
 
-## Cấu trúc repo
+## Repo layout
 
 ```
 data-onboarding-agent/
 ├── app.py                     # Web UI (Gradio)
-├── notebooks/prototype.ipynb  # Colab: Ollama, test tool calling, host model qua tunnel
+├── notebooks/prototype.ipynb  # Colab: clone, Ollama, tool-calling test, host model via tunnel
 ├── agent/
-│   ├── config.py              # đường dẫn + biến môi trường
-│   ├── state.py               # TypedDict state + schema request
-│   ├── extraction.py          # trích field (rule-based) + validate
+│   ├── config.py              # paths + env vars
+│   ├── state.py               # TypedDict state + request schema
+│   ├── extraction.py          # field extraction (rule-based) + validation
 │   ├── knowledge.py           # lookup_playbook, search_catalog
-│   ├── llm.py                 # client Ollama (tùy chọn, hỗ trợ API key)
-│   ├── catalog_sync.py        # build catalog từ GitHub / local / manifest
-│   ├── graph.py               # build graph, checkpointer SQLite
-│   ├── runner.py              # API start/reply cho UI và test
-│   ├── nodes/                 # mỗi node một file
-│   ├── prompts/               # prompt cho từng bước (.md)
-│   └── integrations/teams.py  # Teams webhook (hoặc mock)
-├── playbooks/                 # playbook THẬT (đang trống, xem playbooks/README.md)
-├── catalog/                   # catalog dbt THẬT (đang trống)
-├── demo/                      # ⚠️ DỮ LIỆU MẪU — xoá cả thư mục khi đã có data thật
+│   ├── llm.py                 # Ollama client (optional, supports API key)
+│   ├── catalog_sync.py        # build catalog from GitHub / local / manifest
+│   ├── graph.py               # build graph, SQLite checkpointer
+│   ├── runner.py              # start/reply API for the UI and scripts
+│   ├── nodes/                 # one file per node
+│   ├── prompts/               # LLM prompts (.md)
+│   └── integrations/teams.py  # Teams webhook (or mock)
+├── playbooks/                 # REAL playbooks (empty for now, see playbooks/README.md)
+├── catalog/                   # REAL dbt catalog (empty until synced)
+├── demo/                      # ⚠️ SAMPLE DATA — delete the whole folder once real data exists
 │   ├── playbooks/             #   ga4.yaml, appsflyer.yaml
 │   ├── catalog/               #   dbt_models.json
-│   └── sample_requests/       #   5 kịch bản hội thoại + kết quả kỳ vọng
+│   └── sample_requests/       #   5 scripted conversations + expected results
 ├── scripts/
-│   ├── export_dbt_catalog.py  # sync catalog bằng dòng lệnh
-│   ├── ollama_auth_proxy.py   # proxy API key trước Ollama (chạy trên Colab)
-│   └── run_samples.py         # chạy request mẫu và so với kỳ vọng
-└── outputs/                   # kết quả theo request_id (gitignored)
+│   ├── export_dbt_catalog.py  # catalog sync from the command line
+│   ├── ollama_auth_proxy.py   # API-key proxy in front of Ollama (runs on Colab)
+│   └── run_samples.py         # run sample requests and compare with expectations
+└── outputs/                   # results per request_id (gitignored)
 ```
 
-### Data thật và data demo
-Agent ưu tiên `playbooks/` và `catalog/dbt_models.json`. Chỉ khi chúng trống thì mới dùng `demo/`, và lúc đó mọi kết quả khả thi đều có cảnh báo "Đang chạy với DEMO data". Có thể trỏ đường dẫn khác bằng `PLAYBOOK_DIR` và `CATALOG_PATH`.
+### Real data vs demo data
+The agent prefers `playbooks/` and `catalog/dbt_models.json`. Only when they are empty does it fall back to `demo/`, and then every feasibility result carries a "DEMO data" warning. Other paths can be set with `PLAYBOOK_DIR` and `CATALOG_PATH`.
 
-Khi chuyển code sang repo của công ty: xoá thư mục `demo/`.
+When moving the code to the company repo: delete the `demo/` folder.
 
-## Chạy local
+## Run locally
 
-```bash
+```powershell
 python -m venv .venv
-.venv/Scripts/activate          # Linux/Mac: source .venv/bin/activate
-pip install -r requirements.txt
+.venv\Scripts\python -m pip install -r requirements.txt
 
-python app.py                   # Web UI tại http://127.0.0.1:7860  (--share để có link public)
-python scripts/run_samples.py   # chạy 5 kịch bản demo
+.venv\Scripts\python app.py                   # web UI at http://127.0.0.1:7860 (--share for a public link)
+.venv\Scripts\python scripts/run_samples.py   # run the 5 demo scenarios
 ```
 
-Trên Colab: mở [notebooks/prototype.ipynb](notebooks/prototype.ipynb).
+Or activate the venv first (`.venv\Scripts\Activate.ps1`, or `source .venv/bin/activate` on Linux/Mac) and use plain `python`. If PowerShell says running scripts is disabled, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
 
-## Mô hình chạy: Colab host model, web app chạy trên máy bạn
+## Deployment: model on Colab, web app on your machine
 
 ```
- Máy bạn                                         Google Colab (GPU T4)
+ Your machine                                    Google Colab (GPU T4)
 ┌──────────────────────────────┐   HTTPS +    ┌─────────────────────────────────────┐
 │ python app.py (web UI)       │   API key    │ cloudflared tunnel                  │
 │  ├─ ⚙️ LLM settings ──────────┼─────────────▶│  └─ scripts/ollama_auth_proxy.py    │
 │  ├─ 📦 dbt catalog ─┐         │              │      └─ Ollama (qwen2.5 7B/14B)     │
 │  └─ checkpoint, outputs      │              └─────────────────────────────────────┘
 └─────────────────────┼────────┘
-                      ▼ GitHub token (chỉ nằm trên máy bạn)
-               GitHub repo dbt  ──▶  catalog/dbt_models.json
+                      ▼ GitHub token (stays on your machine)
+               dbt GitHub repo  ──▶  catalog/dbt_models.json
 ```
 
-Ollama không có xác thực, nên trên Colab có thêm `scripts/ollama_auth_proxy.py` đòi API key và chỉ cho gọi các API đọc/chat (chặn pull/xoá model).
+Ollama has no authentication, so on Colab `scripts/ollama_auth_proxy.py` sits in front of it: it requires an API key and only allows read/chat APIs (pull/delete are blocked).
 
-> ⚠️ Colab bản free hạn chế việc dùng runtime làm web service / truy cập không qua notebook UI. Gọi model từ máy bạn qua tunnel có thể vi phạm điều khoản và bị ngắt phiên — đọc FAQ của Colab trước khi dùng thường xuyên. Phương án dự phòng: chạy luôn web app trên Colab (cách B trong notebook), hoặc chạy Ollama trên máy có GPU / API LLM được công ty cho phép.
+> ⚠️ Free-tier Colab restricts using the runtime as a web service / accessing it outside the notebook UI. Calling the model from your machine through a tunnel may break the terms and get the session cut off — read the Colab FAQ before using it regularly. Fallbacks: run the web app on Colab too (option B in the notebook), or run Ollama on a machine with a GPU / use an LLM API approved by the company.
 
-### Bước 1 — Host model trên Colab
-Mở [notebooks/prototype.ipynb](notebooks/prototype.ipynb) trên Colab (runtime GPU T4), chạy bước 1 → 4. Bước 4 in ra:
+### Step 1 — Host the model on Colab
+1. Create a fine-grained GitHub token with **Contents: Read-only** on this repo only. In Colab, add it under 🔑 **Secrets** as `GITHUB_TOKEN` and turn on *Notebook access* (the repo is private; the token never goes into the notebook).
+2. Open [notebooks/prototype.ipynb](notebooks/prototype.ipynb) on Colab (GPU T4 runtime) — *File → Upload notebook*, or *File → Open notebook → GitHub* with *Include private repos*.
+3. Run steps 1 → 4. Step 4 prints:
+   ```
+   Ollama host : https://xxxx.trycloudflare.com
+   API key     : ....
+   ```
+Keep the Colab tab open. The URL changes every time the cell is re-run.
+
+### Step 2 — Open the web app on your machine
+```powershell
+.venv\Scripts\python app.py   # http://127.0.0.1:7860
 ```
-Ollama host : https://xxxx.trycloudflare.com
-API key     : ....
-```
-Giữ tab Colab mở. URL đổi mỗi lần chạy lại cell.
+Open **⚙️ LLM settings** in the right column:
+- **Ollama host**: paste the URL from Colab (for Ollama on your own machine use `http://localhost:11434`)
+- **API key**: paste the key from Colab (leave empty for local Ollama)
+- **🔄 Lấy danh sách** (fetch models) → pick a model → **Test** → **Áp dụng** (apply)
+- **Tắt LLM** (disable LLM): back to rule-based. The "Đang dùng" (in use) line shows what the agent is running on.
 
-### Bước 2 — Mở web app trên máy bạn
+### Step 3 — Sync the dbt catalog from GitHub
+Open **📦 dbt catalog**:
+- **GitHub**: enter the repo `owner/name`, branch, the dbt project folder inside the repo (if not at the root), and a token. Click **Sync catalog**.
+- **Local**: enter the path of a dbt project folder, or a `manifest.json` file.
+
+`target/manifest.json` is used if present; otherwise the schema `.yml` files under `models/` are read (model name, description, columns, tags, `meta`). The result is written to `catalog/dbt_models.json`, and the agent switches to it from the demo catalog right away.
+
+GitHub token: use a **fine-grained token with `Contents: Read-only`** on the dbt repo only. It is used only during the sync and never written to disk. To avoid re-entering it, set the `GITHUB_TOKEN` env var and leave the token field empty.
+
+Command-line sync also works:
 ```bash
-python app.py        # http://127.0.0.1:7860
-```
-Mở **⚙️ LLM settings** ở cột phải:
-- **Ollama host**: dán URL từ Colab (chạy Ollama ngay trên máy thì để `http://localhost:11434`)
-- **API key**: dán key từ Colab (Ollama local thì để trống)
-- **🔄 Lấy danh sách** → chọn model → **Test** → **Áp dụng**
-- **Tắt LLM**: quay về rule-based. Dòng "Đang dùng" cho biết agent đang chạy bằng gì.
-
-### Bước 3 — Sync catalog dbt từ GitHub
-Mở **📦 dbt catalog**:
-- **GitHub**: nhập repo `owner/name`, branch, thư mục dbt project trong repo (nếu không nằm ở gốc), và token. Bấm **Sync catalog**.
-- **Local**: nhập đường dẫn thư mục dbt project, hoặc file `manifest.json`.
-
-Agent ưu tiên `target/manifest.json` nếu có; không có thì đọc các file schema `.yml` trong `models/` (tên model, mô tả, cột, tags, `meta`). Kết quả ghi vào `catalog/dbt_models.json`, và agent dùng luôn catalog này thay cho catalog demo.
-
-Token GitHub: nên dùng **fine-grained token chỉ có quyền `Contents: Read-only`** trên đúng repo dbt. Token chỉ dùng trong lúc sync, không ghi xuống file. Muốn khỏi nhập lại mỗi lần thì đặt biến môi trường `GITHUB_TOKEN` rồi để trống ô token.
-
-Sync bằng dòng lệnh cũng được:
-```bash
-python scripts/export_dbt_catalog.py --github owner/repo --ref main --subdir dbt   # token lấy từ GITHUB_TOKEN
+python scripts/export_dbt_catalog.py --github owner/repo --ref main --subdir dbt   # token from GITHUB_TOKEN
 python scripts/export_dbt_catalog.py --project-dir ../my-dbt-project
 python scripts/export_dbt_catalog.py --manifest ../my-dbt-project/target/manifest.json
 ```
 
-### Cấu hình mặc định khi mở app
-Cấu hình chọn trên UI sẽ mất khi tắt app. Muốn mở app là có sẵn thì đặt biến môi trường:
+### Defaults at startup
+Settings chosen in the UI are lost when the app stops. To have them preset, set env vars before starting:
 ```powershell
 $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."; $env:OLLAMA_MODEL = "qwen2.5:7b"
-python app.py
+.venv\Scripts\python app.py
 ```
 
-### Biến môi trường
+### Environment variables
 
-| Biến | Mặc định | Ý nghĩa |
+| Variable | Default | Meaning |
 |---|---|---|
-| `OLLAMA_HOST` | `http://localhost:11434` | URL Ollama local, hoặc URL tunnel từ Colab |
-| `OLLAMA_API_KEY` | (trống) | Key của proxy trên Colab |
-| `OLLAMA_MODEL` | (trống) | vd. `qwen2.5:7b`. Trống thì dùng rule-based |
-| `GITHUB_TOKEN` | (trống) | Token đọc repo dbt, dùng khi ô token trên UI để trống |
+| `OLLAMA_HOST` | `http://localhost:11434` | Local Ollama URL, or the tunnel URL from Colab |
+| `OLLAMA_API_KEY` | (empty) | Key for the proxy on Colab |
+| `OLLAMA_MODEL` | (empty) | e.g. `qwen2.5:7b`. Empty = rule-based |
+| `GITHUB_TOKEN` | (empty) | Token to read the dbt repo, used when the UI token field is empty |
 | `CHECKPOINT_DB` | `./checkpoints.db` | |
 | `OUTPUT_DIR` | `./outputs` | |
-| `TEAMS_WEBHOOK_URL` | (trống) | Trống thì mock, ghi file |
+| `TEAMS_WEBHOOK_URL` | (empty) | Empty = mock, writes to a file |
 | `PLAYBOOK_DIR`, `CATALOG_PATH` | `playbooks/`, `catalog/dbt_models.json` (fallback `demo/`) | |
 
-## Đề xuất sau prototype
+## After the prototype
 
-Theo `PLAN.md`: chuyển lên VM (Docker) + Postgres checkpointer, Teams bot để duyệt trong thread, tạo US thật trên Azure DevOps/Jira, đọc metadata Snowflake trực tiếp.
+From `PLAN.md`: move to a VM (Docker) + Postgres checkpointer, a Teams bot to approve inside the thread, create real User Stories in Azure DevOps/Jira, read Snowflake metadata directly.
 
-**MCP cho GitHub:** hiện catalog đọc thẳng qua GitHub API (chắc chắn hơn với model nhỏ). Khi model gọi tool ổn định (sau Phase 0), có thể gắn GitHub MCP server để agent tự đọc SQL của model khi cần trả lời chi tiết hơn (vd. model có lọc theo điều kiện X không).
+**MCP for GitHub:** the catalog is currently read straight through the GitHub API (more reliable with small models). Once tool calling is stable (after Phase 0), a GitHub MCP server could let the agent read a model's SQL when it needs more detail (e.g. "does this model filter on X?").
