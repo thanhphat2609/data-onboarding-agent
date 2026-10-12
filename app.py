@@ -11,8 +11,10 @@ The "dbt catalog" panel syncs the catalog from a GitHub repo (token) or a local 
 import argparse
 import json
 import os
+import time
 
 import gradio as gr
+from langgraph.types import Command
 
 from agent import catalog_sync, config, llm
 from agent.runner import AgentRunner
@@ -64,30 +66,69 @@ def _render(thread_id: str, ev: dict, history: list):
     )
 
 
+# What the "thinking" bubble says while each node runs.
+NODE_STATUS = {
+    "intake": "Reading your message…",
+    "notify": "Notifying the Data Team…",
+    "catalog_check": "Searching the dbt catalog…",
+    "feasibility": "Checking feasibility…",
+    "draft_us": "Drafting the User Story…",
+    "summary": "Sending the summary…",
+}
+
+
+def _thought(steps: list[str], running: bool, title: str) -> dict:
+    """Collapsible "thought" message (Gradio metadata): spinner while pending, step list inside."""
+    lines = [f"✓ {s.rstrip('…')}" for s in steps[:-1]] if running else [f"✓ {s.rstrip('…')}" for s in steps]
+    if running and steps:
+        lines.append(f"… {steps[-1]}")
+    return {
+        "role": "assistant",
+        "content": "\n".join(lines) or "…",
+        "metadata": {"title": title, "status": "pending" if running else "done"},
+    }
+
+
+def _run(thread_id: str, graph_input, history: list):
+    """Stream the graph: show the user's message and a live "thinking" block, then the real answer."""
+    started, steps = time.perf_counter(), []
+    # Hide the approval panel while working, and clear the input box right away.
+    yield thread_id, history + [_thought(steps, True, "Thinking…")], gr.update(visible=False), gr.update(), gr.update(), ""
+    ev = {"type": "empty"}
+    for ev in runner.stream(thread_id, graph_input):
+        if ev["type"] == "progress" and ev["node"] in NODE_STATUS:
+            steps.append(NODE_STATUS[ev["node"]])
+            yield thread_id, history + [_thought(steps, True, steps[-1])], gr.update(), gr.update(), gr.update(), ""
+    # Collapse into a "Thought for Xs" line above the answer, like chat assistants do.
+    done = _thought(steps, False, f"Thought for {time.perf_counter() - started:.1f}s")
+    yield _render(thread_id, ev, history + [done])
+
+
 def on_send(message: str, thread_id: str, history: list):
     message = (message or "").strip()
     if not message:
-        return thread_id, history, gr.update(), gr.update(), gr.update(), ""
+        yield thread_id, history, gr.update(), gr.update(), gr.update(), ""
+        return
     history = history + [{"role": "user", "content": message}]
     ev = runner.current_event(thread_id) if thread_id else {"type": "empty"}
     if ev["type"] == "question":
-        ev = runner.reply(thread_id, message)
+        graph_input = Command(resume=message)
     elif ev["type"] == "approval":  # typing while approval is pending = edit request
-        ev = runner.reply(thread_id, {"action": "edit", "comment": message})
+        graph_input = Command(resume={"action": "edit", "comment": message})
     else:
-        thread_id, ev = runner.start(message)
-    return _render(thread_id, ev, history)
+        thread_id, graph_input = runner.new_request(message)
+    yield from _run(thread_id, graph_input, history)
 
 
 def on_decision(action: str):
     def handler(comment: str, thread_id: str, history: list):
         if action == "edit" and not (comment or "").strip():
             gr.Warning("Describe what to change in the comment box before clicking Edit.")
-            return thread_id, history, gr.update(), gr.update(), gr.update(), comment
+            yield thread_id, history, gr.update(), gr.update(), gr.update(), comment
+            return
         label = "👍 Approve" if action == "approve" else f"✏️ Edit: {comment}"
         history = history + [{"role": "user", "content": label}]
-        ev = runner.reply(thread_id, {"action": action, "comment": comment or ""})
-        return _render(thread_id, ev, history)
+        yield from _run(thread_id, Command(resume={"action": action, "comment": comment or ""}), history)
 
     return handler
 
@@ -175,6 +216,25 @@ def on_sync_catalog(mode: str, repo: str, ref: str, subdir: str, token: str, loc
 
 # ---------- layout ----------
 
+# One slim scrollbar inside the chat, no extra scroll on the wrapper.
+CSS = """
+#chat { overflow: hidden; }
+#chat * { scrollbar-width: thin; scrollbar-color: var(--border-color-primary) transparent; }
+#chat ::-webkit-scrollbar { width: 6px; }
+#chat ::-webkit-scrollbar-thumb { background: var(--border-color-primary); border-radius: 3px; }
+#chat ::-webkit-scrollbar-button { display: none; }
+"""
+# Shimmer on the title of a running "thought" block (the spinner is Gradio's own).
+CSS += """
+@keyframes thinking-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+#chat .thought-group .title:has(.loading-spinner) .md p {
+  background: linear-gradient(90deg, var(--body-text-color-subdued) 35%, var(--body-text-color) 50%, var(--body-text-color-subdued) 65%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: thinking-shimmer 1.6s linear infinite;
+}
+"""
+
 def build_ui() -> gr.Blocks:
     with gr.Blocks(title="Data Onboarding Agent") as demo:
         thread_state = gr.State("")
@@ -182,7 +242,7 @@ def build_ui() -> gr.Blocks:
         demo_banner = gr.Markdown(_demo_banner())
         with gr.Row():
             with gr.Column(scale=3):
-                chat = gr.Chatbot(height=520, label="Chat")
+                chat = gr.Chatbot(elem_id="chat", show_label=False, min_height=320, max_height="65vh", buttons=[])  # grows with content, then scrolls
                 with gr.Row():
                     box = gr.Textbox(placeholder="e.g. I need GA4 sessions by campaign for the marketing dashboard…", scale=5, show_label=False)
                     send = gr.Button("Send", variant="primary", scale=1)
@@ -232,11 +292,13 @@ def build_ui() -> gr.Blocks:
                 new_btn = gr.Button("New session")
 
         outputs = [thread_state, chat, approval_box, approval_md, state_json, box]
-        send.click(on_send, [box, thread_state, chat], outputs)
-        box.submit(on_send, [box, thread_state, chat], outputs)
-        approve_btn.click(on_decision("approve"), [comment, thread_state, chat], outputs[:-1] + [comment])
-        edit_btn.click(on_decision("edit"), [comment, thread_state, chat], outputs[:-1] + [comment])
-        resume_btn.click(on_resume, [old_tid], outputs)
+        # The chat shows its own "⏳ thinking" bubble, so hide Gradio's progress overlay.
+        busy = {"show_progress": "hidden"}
+        send.click(on_send, [box, thread_state, chat], outputs, **busy)
+        box.submit(on_send, [box, thread_state, chat], outputs, **busy)
+        approve_btn.click(on_decision("approve"), [comment, thread_state, chat], outputs[:-1] + [comment], **busy)
+        edit_btn.click(on_decision("edit"), [comment, thread_state, chat], outputs[:-1] + [comment], **busy)
+        resume_btn.click(on_resume, [old_tid], outputs, **busy)
         new_btn.click(lambda: ("", [], gr.update(visible=False), "", "{}", ""), None, outputs)
         thread_state.change(lambda t: t, thread_state, thread_label)
 
@@ -250,9 +312,14 @@ def build_ui() -> gr.Blocks:
     return demo
 
 
+def launch(**kwargs):
+    """Build and launch the UI with its CSS (use this from the notebook too)."""
+    build_ui().launch(css=CSS, **kwargs)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--share", action="store_true", help="create a temporary public link (Colab)")
     parser.add_argument("--port", type=int, default=7860)
     args = parser.parse_args()
-    build_ui().launch(share=args.share, server_port=args.port)
+    launch(share=args.share, server_port=args.port)
