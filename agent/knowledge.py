@@ -9,6 +9,7 @@ import yaml
 from agent import config
 from agent.extraction import norm
 
+# Bilingual (Vietnamese + English) stopwords, since requests can be written in either language.
 STOPWORDS = {
     "và", "của", "cho", "các", "những", "theo", "từ", "đến", "data", "dữ", "liệu", "cần", "là", "để", "có",
     "the", "and", "for", "of", "by", "to", "a", "an", "in", "per", "with", "dùng", "một", "trong",
@@ -78,10 +79,10 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "lookup_playbook",
-            "description": "Lấy playbook của một nguồn data: cách truy cập, ngày có data sớm nhất, connector, owner.",
+            "description": "Get the playbook of a data source: access methods, earliest available date, connector, owner.",
             "parameters": {
                 "type": "object",
-                "properties": {"source": {"type": "string", "description": "Mã nguồn viết thường, vd. ga4, appsflyer"}},
+                "properties": {"source": {"type": "string", "description": "Lowercase source code, e.g. ga4, appsflyer"}},
                 "required": ["source"],
             },
         },
@@ -90,7 +91,7 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "search_catalog",
-            "description": "Tìm model dbt đã có trong catalog theo mô tả data cần.",
+            "description": "Search the dbt catalog for existing models matching a description of the needed data.",
             "parameters": {
                 "type": "object",
                 "properties": {"query": {"type": "string"}, "source": {"type": "string"}},

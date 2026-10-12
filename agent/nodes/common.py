@@ -26,8 +26,8 @@ def format_request(request: dict) -> str:
     dr = request.get("date_range") or {}
     return "\n".join(
         [
-            f"- **Mô tả:** {request.get('dataset_description', '')}",
-            f"- **Nguồn:** {', '.join(request.get('sources', []))}",
+            f"- **Description:** {request.get('dataset_description', '')}",
+            f"- **Sources:** {', '.join(request.get('sources', []))}",
             f"- **Date range:** {dr.get('start', '?')} → {dr.get('end', '?')}",
             f"- **ETA:** {request.get('eta', '')}",
             f"- **Refresh:** {request.get('refresh_frequency', '')}",

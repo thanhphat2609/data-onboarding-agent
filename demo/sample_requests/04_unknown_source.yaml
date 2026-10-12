@@ -1,13 +1,13 @@
-name: Nguồn chưa có playbook (TikTok Ads) — user chấp nhận để Data Team tìm hiểu
+name: Source without a playbook (TikTok Ads) — user accepts, Data Team investigates
 today: "2026-10-12"
 initial_message: |
-  dataset: spend và impressions TikTok Ads theo campaign
-  nguồn: tiktok ads
-  date range: 2026-01-01 đến nay
+  dataset: TikTok Ads spend and impressions by campaign
+  source: tiktok ads
+  date range: 2026-01-01 to now
   eta: 2026-12-31
   refresh: daily
   grain: date x campaign
-  consumers: Team performance, báo cáo tuần
+  consumers: Performance team, weekly report
 answers:
   - ok
 approval:

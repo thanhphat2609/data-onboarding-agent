@@ -4,7 +4,7 @@ An AI agent that turns data requests into ready-to-build work: it gathers requir
 
 Detailed plan: see `PLAN.md` (prototype plan).
 
-> The agent talks to users in Vietnamese (questions, UI labels, User Story, Teams messages). Code, comments and docs are in English.
+> Everything is in English (UI, questions, User Story, Teams messages, code, docs). The agent still understands answers written in Vietnamese.
 
 ---
 
@@ -157,8 +157,8 @@ Keep the Colab tab open. The URL changes every time the cell is re-run.
 Open **⚙️ LLM settings** in the right column:
 - **Ollama host**: paste the URL from Colab (for Ollama on your own machine use `http://localhost:11434`)
 - **API key**: paste the key from Colab (leave empty for local Ollama)
-- **🔄 Lấy danh sách** (fetch models) → pick a model → **Test** → **Áp dụng** (apply)
-- **Tắt LLM** (disable LLM): back to rule-based. The "Đang dùng" (in use) line shows what the agent is running on.
+- **🔄 Fetch models** → pick a model → **Test** → **Apply**
+- **Disable LLM**: back to rule-based. The "In use" line shows what the agent is running on.
 
 ### Step 3 — Sync the dbt catalog from GitHub
 Open **📦 dbt catalog**:

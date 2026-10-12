@@ -52,18 +52,18 @@ def accept_gaps(request: dict, gaps: list[dict]) -> tuple[dict, list[str]]:
 def gap_question(gaps: list[dict], unclear: bool) -> str:
     lines = []
     if unclear:
-        lines.append("Mình chưa hiểu câu trả lời, bạn xem lại giúp nhé.\n")
-    lines.append("Mình đã kiểm tra khả thi và thấy vấn đề sau:")
+        lines.append("Sorry, I didn't understand that answer — could you check it again?\n")
+    lines.append("I checked feasibility and found the following issue(s):")
     for g in gaps:
         lines.append(f"- {g['message']}")
     options = []
     starts = [g["available_from"] for g in gaps if g["type"] == "date_range"]
     if starts:
-        options.append(f"bắt đầu date range từ {max(starts)}")
+        options.append(f"start the date range from {max(starts)}")
     if any(g["type"] == "unknown_source" for g in gaps):
-        options.append("tiếp tục với nguồn chưa có playbook (Data Team sẽ tìm hiểu thêm)")
-    lines.append(f"\nTrả lời **đồng ý** để chấp nhận: {'; '.join(options)}.")
-    lines.append("Hoặc nhập phương án khác, vd. `date range: 2024-01-01 đến nay` hoặc `nguồn: ga4`.")
+        options.append("continue with the source that has no playbook (the Data Team will investigate)")
+    lines.append(f"\nReply **ok** to accept: {'; '.join(options)}.")
+    lines.append("Or propose an alternative, e.g. `date range: 2024-01-01 to now` or `source: ga4`.")
     return "\n".join(lines)
 
 
@@ -72,11 +72,11 @@ def fields_question(fields: list[str], errors: dict, first: bool) -> str:
     for field in fields:
         if field in errors:
             lines.append(f"⚠️ {errors[field]}")
-    lines.append("Chào bạn! Mình cần vài thông tin để lên request:" if first else "Mình cần thêm thông tin:")
+    lines.append("Hi! I need a few details to set up your request:" if first else "I need a bit more information:")
     for i, field in enumerate(fields, 1):
         lines.append(f"{i}. {FIELD_QUESTIONS[field]}")
     if len(fields) > 1:
-        lines.append("\n(Trả lời theo số, vd. `1. ...` mỗi ý một dòng)")
+        lines.append("\n(Answer by number, e.g. `1. ...`, one item per line)")
     question = "\n".join(lines)
     llm = get_llm()
     if llm:

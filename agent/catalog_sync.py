@@ -109,7 +109,7 @@ def from_local_project(project_dir: str | Path) -> list[dict]:
     """Prefer target/manifest.json (after `dbt parse`); otherwise read schema .yml files."""
     root = Path(project_dir)
     if not root.is_dir():
-        raise FileNotFoundError(f"Không thấy thư mục dbt project: {root}")
+        raise FileNotFoundError(f"dbt project folder not found: {root}")
     manifest = root / "target" / "manifest.json"
     if manifest.exists():
         return from_manifest_file(manifest)
@@ -129,9 +129,9 @@ def _gh_get(url: str, token: str, raw: bool = False) -> requests.Response:
         headers["Authorization"] = f"Bearer {token}"
     resp = requests.get(url, headers=headers, timeout=30)
     if resp.status_code == 401:
-        raise PermissionError("GitHub token không hợp lệ hoặc đã hết hạn.")
+        raise PermissionError("GitHub token is invalid or expired.")
     if resp.status_code == 404:
-        raise FileNotFoundError(f"Không tìm thấy trên GitHub (sai repo/branch, hoặc token không có quyền đọc repo): {url}")
+        raise FileNotFoundError(f"Not found on GitHub (wrong repo/branch, or the token cannot read this repo): {url}")
     resp.raise_for_status()
     return resp
 
@@ -153,7 +153,7 @@ def from_github(repo: str, token: str, ref: str = "main", subdir: str = "") -> l
 
     schema_paths = [p for p in paths if p.startswith(prefix) and _is_schema_file(p.removeprefix(prefix))][:MAX_FILES]
     if not schema_paths:
-        raise FileNotFoundError(f"Không thấy file .yml nào trong `{prefix}models/` của {repo}@{ref}.")
+        raise FileNotFoundError(f"No .yml files found under `{prefix}models/` in {repo}@{ref}.")
     return models_from_schema_files({p.removeprefix(prefix): fetch(p) for p in schema_paths})
 
 

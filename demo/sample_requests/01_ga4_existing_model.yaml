@@ -1,15 +1,15 @@
-name: GA4 sessions theo campaign — data đã có sẵn trong catalog
+name: GA4 sessions by campaign — data already in the catalog
 today: "2026-10-12"
 initial_message: |
-  Team marketing cần sessions, users và conversions GA4 theo ngày và campaign để làm dashboard hiệu quả kênh.
+  The marketing team needs GA4 sessions, users and conversions by day and campaign for a channel performance dashboard.
 answers:
   - |
-    1. từ 2024-01-01 đến nay
+    1. from 2024-01-01 to now
     2. 2026-11-30
     3. daily
   - |
     1. date x source x medium x campaign
-    2. Team marketing, dashboard Looker Studio
+    2. Marketing team, Looker Studio dashboard
 approval:
   - {action: approve}
 expected:

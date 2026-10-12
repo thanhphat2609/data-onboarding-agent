@@ -4,7 +4,7 @@ import json
 from agent.llm import get_llm, load_prompt, safe_call
 from agent.nodes.common import output_dir, rel
 
-KIND_LABEL = {"existing_model": "Dùng model có sẵn", "ingest": "Ingestion mới"}
+KIND_LABEL = {"existing_model": "Reuse existing model", "ingest": "New ingestion"}
 
 
 def _pipeline_steps(request: dict, src: dict) -> list[str]:
@@ -13,20 +13,20 @@ def _pipeline_steps(request: dict, src: dict) -> list[str]:
     grain = request.get("grain", "")
     consumers = request.get("consumers", "")
     if rec is None:
-        return [f"Data Team tìm hiểu nguồn `{source}` (chưa có playbook) rồi đề xuất cách lấy."]
+        return [f"Data Team investigates source `{source}` (no playbook yet) and proposes an access method."]
     if rec["kind"] == "existing_model":
         return [
-            f"Dùng lại model `{rec['name']}` (đã có trong catalog, data từ {rec['available_from'] or 'n/a'}).",
-            f"Tạo model mart/view theo grain `{grain}` nếu model hiện tại chưa đúng grain.",
-            f"Expose cho: {consumers}.",
+            f"Reuse model `{rec['name']}` (already in the catalog, data from {rec['available_from'] or 'n/a'}).",
+            f"Build a mart model/view at grain `{grain}` if the existing model has a different grain.",
+            f"Expose to: {consumers}.",
         ]
-    connector = rec.get("connector") or "connector hiện tại"
+    connector = rec.get("connector") or "current connector"
     return [
-        f"Ingestion `{source}` qua `{rec['name']}` ({connector}), lịch {request.get('refresh_frequency')}.",
-        f"Backfill từ {request['date_range']['start']}.",
-        f"Model staging `stg_{source}__*` → mart theo grain `{grain}`.",
-        "Thêm dbt test: not_null/unique trên key, freshness theo tần suất refresh.",
-        f"Expose cho: {consumers}.",
+        f"Ingest `{source}` via `{rec['name']}` ({connector}), schedule: {request.get('refresh_frequency')}.",
+        f"Backfill from {request['date_range']['start']}.",
+        f"Staging model `stg_{source}__*` → mart at grain `{grain}`.",
+        "Add dbt tests: not_null/unique on keys, freshness matching the refresh frequency.",
+        f"Expose to: {consumers}.",
     ]
 
 
@@ -39,53 +39,53 @@ def render_user_story(state: dict, title: str, description: str, extra_ac: list[
         "",
         f"**Request ID:** {state['request_id']}  ",
         f"**Teams thread:** {state.get('thread_ref', '')}  ",
-        f"**Trạng thái khả thi:** {feas['overall']}"
-        + ("  \n**Data đã có sẵn trong catalog:** có" if feas.get("data_already_available") else ""),
+        f"**Feasibility:** {feas['overall']}"
+        + ("  \n**Data already in catalog:** yes" if feas.get("data_already_available") else ""),
         "",
         "## User Story",
-        f"Là **{request['consumers']}**, tôi cần data: _{request['dataset_description']}_ — "
-        f"ở mức chi tiết **{request['grain']}**, cập nhật **{request['refresh_frequency']}**, "
-        f"từ **{dr['start']}** đến **{dr['end']}**, go live trước **{request['eta']}**.",
+        f"As **{request['consumers']}**, I need: _{request['dataset_description']}_ — "
+        f"at grain **{request['grain']}**, refreshed **{request['refresh_frequency']}**, "
+        f"from **{dr['start']}** to **{dr['end']}**, live by **{request['eta']}**.",
         "",
-        "## Mô tả",
+        "## Description",
         description,
         "",
-        "## Nguồn & khả thi",
-        "| Nguồn | Hướng đề xuất | Data có từ | Phủ date range | Nguồn thông tin |",
+        "## Sources & feasibility",
+        "| Source | Proposed approach | Data available from | Covers date range | Reference |",
         "|---|---|---|---|---|",
     ]
     for src in feas["sources"]:
         rec = src.get("recommendation")
         if rec:
             lines.append(
-                f"| {src['source']} | {KIND_LABEL[rec['kind']]}: `{rec['name']}` | {rec['available_from'] or 'không giới hạn đã biết'} "
-                f"| {'✅' if rec['covers'] else '⚠️ không'} | {rec['ref']} |"
+                f"| {src['source']} | {KIND_LABEL[rec['kind']]}: `{rec['name']}` | {rec['available_from'] or 'no known limit'} "
+                f"| {'✅' if rec['covers'] else '⚠️ no'} | {rec['ref']} |"
             )
         else:
-            lines.append(f"| {src['source']} | Cần tìm hiểu | ? | ? | chưa có playbook |")
+            lines.append(f"| {src['source']} | Needs investigation | ? | ? | no playbook |")
 
-    lines += ["", "## Pipeline đề xuất"]
+    lines += ["", "## Proposed pipeline"]
     for src in feas["sources"]:
         lines.append(f"**{src['source']}**")
         lines += [f"{i}. {step}" for i, step in enumerate(_pipeline_steps(request, src), 1)]
         lines.append("")
 
     ac = [
-        f"Data có đầy đủ từ {dr['start']} đến {dr['end']} ở grain `{request['grain']}`.",
-        f"Pipeline refresh {request['refresh_frequency']}, có test freshness tương ứng.",
-        "Số liệu đối soát với UI của nguồn, sai lệch trong ngưỡng Data Team chấp nhận.",
-        f"Go live và bàn giao cho {request['consumers']} trước {request['eta']}.",
+        f"Data is complete from {dr['start']} to {dr['end']} at grain `{request['grain']}`.",
+        f"Pipeline refreshes {request['refresh_frequency']}, with a matching freshness test.",
+        "Numbers reconcile with the source UI within the tolerance agreed by the Data Team.",
+        f"Live and handed over to {request['consumers']} by {request['eta']}.",
     ] + extra_ac
     lines += ["## Acceptance Criteria"] + [f"- [ ] {c}" for c in ac]
 
     risks = feas.get("risks") or []
     accepted = state.get("accepted_gaps") or []
-    lines += ["", "## Rủi ro"] + ([f"- {r}" for r in risks] or ["- Chưa phát hiện rủi ro."])
+    lines += ["", "## Risks"] + ([f"- {r}" for r in risks] or ["- No risks found."])
     if accepted:
-        lines.append(f"- User đã chấp nhận: {', '.join(accepted)}.")
+        lines.append(f"- Accepted by the requester: {', '.join(accepted)}.")
     if state.get("review_comment"):
-        lines += ["", "## Ghi chú người duyệt", state["review_comment"]]
-    lines += ["", "---", "_Draft do agent sinh. Thông tin date range lấy từ playbook/catalog ghi ở cột \"Nguồn thông tin\"._"]
+        lines += ["", "## Reviewer notes", state["review_comment"]]
+    lines += ["", "---", "_Draft generated by the agent. Date range information comes from the playbook/catalog in the \"Reference\" column._"]
     return "\n".join(lines) + "\n"
 
 
@@ -95,8 +95,8 @@ def draft_us(state: dict) -> dict:
     short = desc if len(desc) <= 80 else desc[:80].rsplit(" ", 1)[0] + "…"
     title = f"[Data Request] {short}"
     description = (
-        f"Yêu cầu từ {request['consumers']}: \"{desc}\". Nguồn: {', '.join(request['sources'])}. "
-        f"Request được thu thập qua Data Onboarding Agent và đã được duyệt."
+        f"Requested by {request['consumers']}: \"{desc}\". Sources: {', '.join(request['sources'])}. "
+        f"Collected through the Data Onboarding Agent and approved."
     )
     extra_ac: list[str] = []
     llm = get_llm()

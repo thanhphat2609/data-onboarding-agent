@@ -30,16 +30,16 @@ def assess_source(source: str, request: dict, models: list[dict], today) -> dict
         result["gap"] = {
             "type": "unknown_source",
             "source": source,
-            "message": f"[{source}] Chưa có playbook cho nguồn này — chưa xác định được cách lấy và date range.",
+            "message": f"[{source}] No playbook for this source yet — access method and date range are unknown.",
         }
-        result["risks"].append(f"Nguồn `{source}` chưa có playbook, Data Team cần tìm hiểu trước khi cam kết.")
+        result["risks"].append(f"Source `{source}` has no playbook; the Data Team must investigate before committing.")
         return result
 
     ref = pb["_file"]
     result["playbook"] = ref
     result["playbook_status"] = pb.get("review_status", "draft")
     if result["playbook_status"] != "reviewed":
-        result["risks"].append(f"Playbook `{ref}` chưa được team review — thông tin date range có thể chưa chính xác.")
+        result["risks"].append(f"Playbook `{ref}` has not been reviewed by the team — date range information may be inaccurate.")
 
     for m in models:
         if m.get("source") != source:
@@ -71,7 +71,7 @@ def assess_source(source: str, request: dict, models: list[dict], today) -> dict
         )
 
     if not result["options"]:
-        result["gap"] = {"type": "unknown_source", "source": source, "message": f"[{source}] Playbook không có access method nào."}
+        result["gap"] = {"type": "unknown_source", "source": source, "message": f"[{source}] The playbook has no access methods."}
         return result
 
     covering = [o for o in result["options"] if o["covers"]]
@@ -86,15 +86,15 @@ def assess_source(source: str, request: dict, models: list[dict], today) -> dict
             "requested_start": start.isoformat(),
             "available_from": best["available_from"],
             "message": (
-                f"[{source}] Bạn cần data từ {start} nhưng sớm nhất chỉ lấy được từ {best['available_from']} "
-                f"(qua `{best['name']}`, nguồn: {best['ref']})."
+                f"[{source}] You need data from {start}, but the earliest available is {best['available_from']} "
+                f"(via `{best['name']}`, per {best['ref']})."
             ),
         }
 
     rec = result["recommendation"]
     if rec.get("lead_time_days") and eta and today + timedelta(days=int(rec["lead_time_days"])) > eta:
         result["risks"].append(
-            f"ETA {eta} gấp: hướng `{rec['name']}` thường cần ~{rec['lead_time_days']} ngày (nguồn: {rec['ref']})."
+            f"ETA {eta} is tight: `{rec['name']}` usually takes ~{rec['lead_time_days']} days (per {rec['ref']})."
         )
     return result
 
@@ -113,7 +113,7 @@ def feasibility(state: dict) -> dict:
     ]
     risks = [risk for r in per_source for risk in r["risks"]]
     if demo := config.demo_parts():
-        risks.insert(0, f"Đang dùng DEMO {' + '.join(demo)} trong `demo/` — kết quả khả thi chỉ để minh hoạ.")
+        risks.insert(0, f"Using DEMO {' + '.join(demo)} from `demo/` — feasibility results are illustrative only.")
     if gaps:
         overall = "gap"
     elif risks:

@@ -1,15 +1,15 @@
-name: GA4 event-level từ 2020 — có gap date range, user chấp nhận
+name: GA4 event-level since 2020 — date range gap, user accepts
 today: "2026-10-12"
 initial_message: |
-  Mình cần data GA4 page views theo page để phân tích content.
-  date range: 2020-01-01 đến nay
+  I need GA4 page views by page for content analysis.
+  date range: 2020-01-01 to now
   eta: 2026-12-15
   refresh: daily
 answers:
   - |
     1. date x page
-    2. Team content, report hàng tháng
-  - đồng ý
+    2. Content team, monthly report
+  - ok
 approval:
   - {action: approve}
 expected:

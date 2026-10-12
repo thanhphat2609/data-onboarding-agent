@@ -6,8 +6,12 @@ from datetime import date, datetime
 from agent.state import FREQUENCIES, KNOWN_SOURCES, REQUIRED_FIELDS
 
 DATE_RE = r"\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}/\d{4}"
-TODAY_WORDS = ["đến nay", "tới nay", "hiện tại", "hôm nay", "today", "now", "present"]
-YES_WORDS = ["ok", "oke", "okay", "yes", "đồng ý", "chấp nhận", "được", "duyệt", "approve", "đúng"]
+# Keywords are bilingual (Vietnamese + English) so users can answer in either language.
+TODAY_WORDS = ["đến nay", "tới nay", "hiện tại", "hôm nay", "until now", "till now", "today", "now", "present"]
+YES_WORDS = [
+    "ok", "oke", "okay", "yes", "yep", "sure", "agree", "accept", "approve", "go ahead",
+    "đồng ý", "chấp nhận", "được", "duyệt", "đúng",
+]
 
 SOURCE_ALIASES = {
     "ga4": ["ga4", "google analytics", "analytics 4"],
@@ -20,10 +24,10 @@ SOURCE_ALIASES = {
 }
 
 FREQ_ALIASES = {
-    "hourly": ["hourly", "hằng giờ", "hàng giờ", "mỗi giờ", "theo giờ"],
-    "daily": ["daily", "hằng ngày", "hàng ngày", "mỗi ngày", "ngày 1 lần"],
-    "weekly": ["weekly", "hằng tuần", "hàng tuần", "mỗi tuần"],
-    "one-off": ["one-off", "one off", "oneoff", "một lần", "1 lần", "adhoc", "ad-hoc"],
+    "hourly": ["hourly", "every hour", "hằng giờ", "hàng giờ", "mỗi giờ", "theo giờ"],
+    "daily": ["daily", "every day", "hằng ngày", "hàng ngày", "mỗi ngày", "ngày 1 lần"],
+    "weekly": ["weekly", "every week", "hằng tuần", "hàng tuần", "mỗi tuần"],
+    "one-off": ["one-off", "one off", "oneoff", "one time", "once", "một lần", "1 lần", "adhoc", "ad-hoc"],
 }
 
 FIELD_LABELS = {
@@ -33,7 +37,7 @@ FIELD_LABELS = {
     "eta": ["eta", "go live", "go-live", "golive", "deadline", "hạn"],
     "refresh_frequency": ["refresh_frequency", "refresh", "tần suất", "frequency"],
     "grain": ["grain", "mức chi tiết", "độ chi tiết", "granularity"],
-    "consumers": ["consumers", "consumer", "người dùng", "ai dùng", "dùng ở đâu", "sử dụng", "người sử dụng"],
+    "consumers": ["consumers", "consumer", "used by", "users", "người dùng", "ai dùng", "dùng ở đâu", "sử dụng", "người sử dụng"],
 }
 
 LABEL_LINE_RE = re.compile(r"^\s*[-*•]?\s*(?P<label>[^:=\n]{1,40}?)\s*[:=]\s*(?P<value>.+)$")
@@ -157,14 +161,14 @@ def rule_extract(text: str, asked_fields: list[str] | None, today: date, first_m
         found["refresh_frequency"] = freq
     if "date_range" not in found:
         m = re.search(
-            rf"(?:từ|from)\s+(?:ngày\s+)?({DATE_RE})\s*(?:đến|tới|to|-|–)\s*(?:ngày\s+)?({DATE_RE}|{'|'.join(TODAY_WORDS)}|nay)",
+            rf"(?:từ|from)\s+(?:ngày\s+)?({DATE_RE})\s*(?:đến|tới|to|until|till|through|-|–)\s*(?:ngày\s+)?({DATE_RE}|{'|'.join(TODAY_WORDS)}|nay)",
             norm(free),
         )
         if m:
             end = today if m.group(2) in TODAY_WORDS + ["nay"] else to_date(m.group(2))
             found["date_range"] = {"start": to_date(m.group(1)).isoformat(), "end": end.isoformat()}
     if "eta" not in found:
-        m = re.search(rf"(?:eta|go[- ]?live|deadline|trước ngày|cần trước|hạn)\D{{0,20}}({DATE_RE})", norm(free))
+        m = re.search(rf"(?:eta|go[- ]?live|deadline|needed by|due|trước ngày|cần trước|hạn)\D{{0,20}}({DATE_RE})", norm(free))
         if m:
             found["eta"] = to_date(m.group(1)).isoformat()
 
@@ -183,10 +187,10 @@ def llm_extract(llm, system_prompt: str, request: dict, missing: list[str], text
     import json
 
     user = (
-        f"Hôm nay: {today.isoformat()}\n"
-        f"Request hiện tại: {json.dumps(request, ensure_ascii=False)}\n"
-        f"Field còn thiếu: {missing}\n"
-        f"Tin nhắn mới của user:\n{text}"
+        f"Today: {today.isoformat()}\n"
+        f"Current request: {json.dumps(request, ensure_ascii=False)}\n"
+        f"Missing fields: {missing}\n"
+        f"New user message:\n{text}"
     )
     raw = llm.complete_json(system_prompt, user) or {}
     out = {}
@@ -221,23 +225,23 @@ def validate(request: dict, today: date) -> tuple[dict, dict[str, str]]:
     if dr:
         s, e = to_date(dr.get("start")), to_date(dr.get("end"))
         if not (s and e):
-            errors["date_range"] = "Ngày không đúng định dạng."
+            errors["date_range"] = "Dates are not in a valid format."
         elif s > e:
-            errors["date_range"] = f"Ngày bắt đầu ({s}) sau ngày kết thúc ({e})."
+            errors["date_range"] = f"Start date ({s}) is after end date ({e})."
         elif s > today:
-            errors["date_range"] = f"Ngày bắt đầu ({s}) nằm trong tương lai."
+            errors["date_range"] = f"Start date ({s}) is in the future."
     eta = clean.get("eta")
     if eta:
         d = to_date(eta)
         if not d:
-            errors["eta"] = "ETA không đúng định dạng."
+            errors["eta"] = "ETA is not in a valid format."
         elif d <= today:
-            errors["eta"] = f"ETA ({d}) phải sau hôm nay ({today})."
+            errors["eta"] = f"ETA ({d}) must be after today ({today})."
     freq = clean.get("refresh_frequency")
     if freq and freq not in FREQUENCIES:
-        errors["refresh_frequency"] = f"Tần suất phải là một trong {FREQUENCIES}."
+        errors["refresh_frequency"] = f"Refresh frequency must be one of {FREQUENCIES}."
     if "sources" in clean and not clean["sources"]:
-        errors["sources"] = "Cần ít nhất một nguồn."
+        errors["sources"] = "At least one source is required."
 
     for field in errors:
         clean.pop(field, None)
@@ -250,7 +254,7 @@ def missing_fields(request: dict) -> list[str]:
 
 def is_yes(text: str) -> bool:
     t = norm(text)
-    return any(_contains_word(t, w) for w in YES_WORDS) and not re.search(r"\b(không|ko|no)\b", t)
+    return any(_contains_word(t, w) for w in YES_WORDS) and not re.search(r"\b(không|ko|no|not)\b", t)
 
 
 def unknown_sources(sources: list[str]) -> list[str]:

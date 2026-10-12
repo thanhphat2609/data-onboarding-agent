@@ -24,18 +24,18 @@ runner = AgentRunner()
 
 def _approval_md(ev: dict) -> str:
     feas = ev["feasibility"]
-    lines = [f"### Chờ duyệt — {ev['request_id']}", f"**Khả thi:** `{feas['overall']}`"]
+    lines = [f"### Pending approval — {ev['request_id']}", f"**Feasibility:** `{feas['overall']}`"]
     if feas.get("data_already_available"):
-        lines.append("**Data đã có sẵn trong catalog** ✅")
+        lines.append("**Data already available in the catalog** ✅")
     for src in feas["sources"]:
         rec = src.get("recommendation")
         lines.append(
-            f"- **{src['source']}**: {rec['kind']} `{rec['name']}` (data từ {rec['available_from'] or 'n/a'}, nguồn: {rec['ref']})"
+            f"- **{src['source']}**: {rec['kind']} `{rec['name']}` (data from {rec['available_from'] or 'n/a'}, per {rec['ref']})"
             if rec
-            else f"- **{src['source']}**: chưa có playbook"
+            else f"- **{src['source']}**: no playbook"
         )
     if feas.get("risks"):
-        lines.append("\n**Rủi ro:**")
+        lines.append("\n**Risks:**")
         lines += [f"- {r}" for r in feas["risks"]]
     return "\n".join(lines)
 
@@ -47,11 +47,11 @@ def _render(thread_id: str, ev: dict, history: list):
     if ev["type"] == "question":
         history.append({"role": "assistant", "content": ev["question"]})
     elif show_approval:
-        history.append({"role": "assistant", "content": "Mình đã đủ thông tin và kiểm tra khả thi xong. Bạn xem bên phải rồi bấm **Duyệt** hoặc **Sửa** nhé."})
+        history.append({"role": "assistant", "content": "I have everything I need and the feasibility check is done. Review it on the right, then click **Approve** or **Edit**."})
     elif ev["type"] == "done":
         us_path = config.ROOT / ev["outputs"]["user_story"]
         us = us_path.read_text(encoding="utf-8") if us_path.exists() else ""
-        history.append({"role": "assistant", "content": f"✅ Đã tạo User Story và gửi tổng hợp cho Data Team.\n\n---\n{us}"})
+        history.append({"role": "assistant", "content": f"✅ User Story created and summary sent to the Data Team.\n\n---\n{us}"})
     values = runner.state(thread_id) if thread_id else {}
     snapshot = {k: values.get(k) for k in ("request_id", "request", "missing_fields", "gap", "existing_models", "outputs") if values.get(k)}
     return (
@@ -82,9 +82,9 @@ def on_send(message: str, thread_id: str, history: list):
 def on_decision(action: str):
     def handler(comment: str, thread_id: str, history: list):
         if action == "edit" and not (comment or "").strip():
-            gr.Warning("Ghi rõ cần sửa gì vào ô góp ý trước khi bấm Sửa.")
+            gr.Warning("Describe what to change in the comment box before clicking Edit.")
             return thread_id, history, gr.update(), gr.update(), gr.update(), comment
-        label = "👍 Duyệt" if action == "approve" else f"✏️ Sửa: {comment}"
+        label = "👍 Approve" if action == "approve" else f"✏️ Edit: {comment}"
         history = history + [{"role": "user", "content": label}]
         ev = runner.reply(thread_id, {"action": action, "comment": comment or ""})
         return _render(thread_id, ev, history)
@@ -96,7 +96,7 @@ def on_resume(old_thread_id: str):
     old_thread_id = (old_thread_id or "").strip()
     values = runner.state(old_thread_id) if old_thread_id else {}
     if not values:
-        gr.Warning("Không tìm thấy phiên này trong checkpoint.")
+        gr.Warning("Session not found in the checkpoint.")
         return "", [], gr.update(visible=False), "", "{}", ""
     history = [{"role": m["role"], "content": m["content"]} for m in values.get("messages", [])]
     return _render(old_thread_id, runner.current_event(old_thread_id), history)
@@ -109,32 +109,32 @@ def on_refresh_models(host: str, api_key: str, current: str):
         models = llm.list_models(host, api_key)
     except Exception as exc:  # noqa: BLE001
         if "401" in str(exc):
-            return gr.update(), "❌ Sai API key."
-        return gr.update(), f"❌ Không kết nối được Ollama tại `{host}`: {exc}"
+            return gr.update(), "❌ Wrong API key."
+        return gr.update(), f"❌ Cannot reach Ollama at `{host}`: {exc}"
     if not models:
-        return gr.update(choices=[]), f"⚠️ Ollama chạy nhưng chưa có model nào. Chạy `ollama pull qwen2.5:7b` trước."
+        return gr.update(choices=[]), "⚠️ Ollama is running but has no models. Run `ollama pull qwen2.5:7b` first."
     value = current if current in models else models[0]
-    return gr.update(choices=models, value=value), f"Tìm thấy {len(models)} model trên `{host}`."
+    return gr.update(choices=models, value=value), f"Found {len(models)} model(s) on `{host}`."
 
 
 def on_test(host: str, api_key: str, model: str):
     if not model:
-        return "Chọn model trước khi test."
+        return "Pick a model before testing."
     try:
         reply, secs = llm.ping(host, model, api_key)
     except Exception as exc:  # noqa: BLE001
-        return f"❌ Lỗi: {exc}"
-    return f"✅ `{model}` trả lời sau {secs:.1f}s: {reply}"
+        return f"❌ Error: {exc}"
+    return f"✅ `{model}` replied in {secs:.1f}s: {reply}"
 
 
 def on_apply(host: str, api_key: str, model: str):
     llm.configure(host, model, api_key)
-    return f"**Đang dùng:** {llm.status()}"
+    return f"**In use:** {llm.status()}"
 
 
 def on_disable(host: str):
     llm.configure(host, "")
-    return f"**Đang dùng:** {llm.status()}"
+    return f"**In use:** {llm.status()}"
 
 
 # ---------- dbt catalog ----------
@@ -143,21 +143,21 @@ def _catalog_md() -> str:
     try:
         data = json.loads(config.CATALOG_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return "Chưa có catalog."
+        return "No catalog yet."
     origin = data.get("origin") or ("DEMO" if "catalog" in config.demo_parts() else "file")
-    return f"**Catalog hiện tại:** {len(data.get('models', []))} model · nguồn `{origin}` · {data.get('generated_at', '')}"
+    return f"**Current catalog:** {len(data.get('models', []))} models · from `{origin}` · {data.get('generated_at', '')}"
 
 
 def _demo_banner() -> str:
     demo = config.demo_parts()
-    return f"> ⚠️ Đang dùng **DEMO {' + '.join(demo)}** trong `demo/`." if demo else ""
+    return f"> ⚠️ Using **DEMO {' + '.join(demo)}** from `demo/`." if demo else ""
 
 
 def on_sync_catalog(mode: str, repo: str, ref: str, subdir: str, token: str, local_path: str):
     try:
         if mode == "GitHub":
             if not repo.strip():
-                return "Nhập repo dạng `owner/name`.", gr.update(), gr.update()
+                return "Enter the repo as `owner/name`.", gr.update(), gr.update()
             # Token from the UI field, else from the GITHUB_TOKEN env var. Never written to disk.
             models = catalog_sync.from_github(repo, token.strip() or os.getenv("GITHUB_TOKEN", ""), ref.strip() or "main", subdir)
             origin = f"github:{repo.strip()}@{ref.strip() or 'main'}/{subdir.strip()}"
@@ -168,9 +168,9 @@ def on_sync_catalog(mode: str, repo: str, ref: str, subdir: str, token: str, loc
     except Exception as exc:  # noqa: BLE001
         return f"❌ {exc}", gr.update(), gr.update()
     if not models:
-        return "⚠️ Không tìm thấy model nào — catalog cũ được giữ nguyên.", gr.update(), gr.update()
+        return "⚠️ No models found — the current catalog is kept.", gr.update(), gr.update()
     catalog_sync.save_catalog(models, origin)
-    return f"✅ Đã sync {len(models)} model.", _catalog_md(), _demo_banner()
+    return f"✅ Synced {len(models)} models.", _catalog_md(), _demo_banner()
 
 
 # ---------- layout ----------
@@ -178,25 +178,25 @@ def on_sync_catalog(mode: str, repo: str, ref: str, subdir: str, token: str, loc
 def build_ui() -> gr.Blocks:
     with gr.Blocks(title="Data Onboarding Agent") as demo:
         thread_state = gr.State("")
-        gr.Markdown("## Data Onboarding Agent\nMô tả data bạn cần, agent sẽ hỏi thêm, kiểm tra khả thi và soạn User Story.")
+        gr.Markdown("## Data Onboarding Agent\nDescribe the data you need — the agent will ask follow-up questions, check feasibility and draft a User Story.")
         demo_banner = gr.Markdown(_demo_banner())
         with gr.Row():
             with gr.Column(scale=3):
                 chat = gr.Chatbot(height=520, label="Chat")
                 with gr.Row():
-                    box = gr.Textbox(placeholder="Vd. Cần sessions GA4 theo campaign cho dashboard marketing…", scale=5, show_label=False)
-                    send = gr.Button("Gửi", variant="primary", scale=1)
+                    box = gr.Textbox(placeholder="e.g. I need GA4 sessions by campaign for the marketing dashboard…", scale=5, show_label=False)
+                    send = gr.Button("Send", variant="primary", scale=1)
             with gr.Column(scale=2):
                 with gr.Group(visible=False) as approval_box:
                     approval_md = gr.Markdown()
-                    comment = gr.Textbox(label="Góp ý (bắt buộc khi Sửa)", placeholder="vd. đổi eta thành 2026-12-01")
+                    comment = gr.Textbox(label="Comment (required for Edit)", placeholder="e.g. change eta to 2026-12-01")
                     with gr.Row():
-                        approve_btn = gr.Button("Duyệt", variant="primary")
-                        edit_btn = gr.Button("Sửa")
+                        approve_btn = gr.Button("Approve", variant="primary")
+                        edit_btn = gr.Button("Edit")
                 with gr.Accordion("⚙️ LLM settings", open=False):
-                    llm_status = gr.Markdown(f"**Đang dùng:** {llm.status()}")
+                    llm_status = gr.Markdown(f"**In use:** {llm.status()}")
                     host = gr.Textbox(label="Ollama host", value=config.OLLAMA_HOST, info="Local: http://localhost:11434 · Colab: URL tunnel (https://….trycloudflare.com)")
-                    api_key = gr.Textbox(label="API key", type="password", value=config.OLLAMA_API_KEY, info="Chỉ cần khi gọi model trên Colab (qua proxy)")
+                    api_key = gr.Textbox(label="API key", type="password", value=config.OLLAMA_API_KEY, info="Only needed for the Colab-hosted model (behind the proxy)")
                     with gr.Row():
                         model = gr.Dropdown(
                             label="Model",
@@ -205,31 +205,31 @@ def build_ui() -> gr.Blocks:
                             allow_custom_value=True,
                             scale=3,
                         )
-                        refresh_btn = gr.Button("🔄 Lấy danh sách", scale=1)
+                        refresh_btn = gr.Button("🔄 Fetch models", scale=1)
                     with gr.Row():
                         test_btn = gr.Button("Test")
-                        apply_btn = gr.Button("Áp dụng", variant="primary")
-                        disable_btn = gr.Button("Tắt LLM")
+                        apply_btn = gr.Button("Apply", variant="primary")
+                        disable_btn = gr.Button("Disable LLM")
                     llm_msg = gr.Markdown()
                 with gr.Accordion("📦 dbt catalog", open=False):
                     catalog_md = gr.Markdown(_catalog_md())
-                    cat_mode = gr.Radio(["GitHub", "Local"], value="GitHub", label="Nguồn")
+                    cat_mode = gr.Radio(["GitHub", "Local"], value="GitHub", label="Source")
                     with gr.Group():
                         gh_repo = gr.Textbox(label="Repo", placeholder="owner/dbt-repo")
                         with gr.Row():
                             gh_ref = gr.Textbox(label="Branch", value="main")
-                            gh_subdir = gr.Textbox(label="Thư mục dbt project trong repo", placeholder="(để trống nếu ở gốc)")
-                        gh_token = gr.Textbox(label="GitHub token", type="password", placeholder="để trống = dùng biến môi trường GITHUB_TOKEN")
-                    local_path = gr.Textbox(label="Local: thư mục dbt project hoặc file manifest.json")
+                            gh_subdir = gr.Textbox(label="dbt project folder in the repo", placeholder="(empty if at the root)")
+                        gh_token = gr.Textbox(label="GitHub token", type="password", placeholder="empty = use the GITHUB_TOKEN env var")
+                    local_path = gr.Textbox(label="Local: dbt project folder or manifest.json file")
                     sync_btn = gr.Button("Sync catalog", variant="primary")
                     sync_msg = gr.Markdown()
-                with gr.Accordion("State hiện tại", open=False):
+                with gr.Accordion("Current state", open=False):
                     state_json = gr.Code(language="json")
-                with gr.Accordion("Tiếp tục phiên cũ", open=False):
-                    thread_label = gr.Textbox(label="thread_id hiện tại", interactive=False)
-                    old_tid = gr.Textbox(label="Nhập thread_id để chạy tiếp")
-                    resume_btn = gr.Button("Tiếp tục")
-                new_btn = gr.Button("Phiên mới")
+                with gr.Accordion("Resume a session", open=False):
+                    thread_label = gr.Textbox(label="Current thread_id", interactive=False)
+                    old_tid = gr.Textbox(label="thread_id to resume")
+                    resume_btn = gr.Button("Resume")
+                new_btn = gr.Button("New session")
 
         outputs = [thread_state, chat, approval_box, approval_md, state_json, box]
         send.click(on_send, [box, thread_state, chat], outputs)
