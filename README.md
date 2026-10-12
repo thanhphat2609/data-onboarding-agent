@@ -53,6 +53,13 @@ Detailed plan: see `PLAN.md` (prototype plan).
 3. Write real past requests in the `demo/sample_requests/` format, run `python scripts/run_samples.py <folder>`.
 4. Hook up the real Teams webhook.
 
+### Known issues / backlog
+- **Source without a playbook: "ok" does not trigger any investigation.** (reported 2026-10-12, seen with GSC)
+  - *Now:* when a source has no playbook, the agent asks the user to accept; replying `ok` only records the risk (`unknown_source:<source>`), marks the source as "Needs investigation" in the User Story, and moves on to approval. The investigation is manual, by the Data Team.
+  - *Problem:* the message "continue with the source that has no playbook (the Data Team will investigate)" reads as if the agent will investigate, so users expect something to happen after `ok`.
+  - *Proposed fix:* (1) reword the message so it is clear the investigation is manual and happens after approval; (2) optional new feature: an `investigate_source` step that searches the synced dbt catalog / GitHub repo for models and docs mentioning the source and drafts a `playbooks/<source>.yaml` skeleton (`review_status: draft`) for the team to review. Not part of the current phases.
+  - *Workaround:* add `playbooks/<source>.yaml` (e.g. `gsc.yaml`) — the gap disappears for that source.
+
 ---
 
 ## Architecture
