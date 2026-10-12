@@ -1,0 +1,17 @@
+name: Nguồn chưa có playbook (TikTok Ads) — user chấp nhận để Data Team tìm hiểu
+today: "2026-10-12"
+initial_message: |
+  dataset: spend và impressions TikTok Ads theo campaign
+  nguồn: tiktok ads
+  date range: 2026-01-01 đến nay
+  eta: 2026-12-31
+  refresh: daily
+  grain: date x campaign
+  consumers: Team performance, báo cáo tuần
+answers:
+  - ok
+approval:
+  - {action: approve}
+expected:
+  max_turns: 5
+  gap_types: [unknown_source]

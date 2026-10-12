@@ -1,0 +1,19 @@
+name: GA4 sessions theo campaign — data đã có sẵn trong catalog
+today: "2026-10-12"
+initial_message: |
+  Team marketing cần sessions, users và conversions GA4 theo ngày và campaign để làm dashboard hiệu quả kênh.
+answers:
+  - |
+    1. từ 2024-01-01 đến nay
+    2. 2026-11-30
+    3. daily
+  - |
+    1. date x source x medium x campaign
+    2. Team marketing, dashboard Looker Studio
+approval:
+  - {action: approve}
+expected:
+  max_turns: 5
+  gap_types: []
+  data_already_available: true
+  recommendation: {ga4: fct_ga4__sessions_daily}

@@ -1,0 +1,18 @@
+name: Đủ thông tin ngay từ đầu — người duyệt sửa ETA rồi duyệt
+today: "2026-10-12"
+initial_message: |
+  dataset: install theo platform và country từ AppsFlyer
+  nguồn: appsflyer
+  date range: 2025-01-01 đến 2026-09-30
+  eta: 2026-10-14
+  refresh: one-off
+  grain: date x platform x country
+  consumers: Team product, phân tích ad-hoc
+answers: []
+approval:
+  - {action: edit, comment: "đổi eta thành 2026-11-01"}
+  - {action: approve}
+expected:
+  max_turns: 0
+  gap_types: []
+  final_eta: "2026-11-01"

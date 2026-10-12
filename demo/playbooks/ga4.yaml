@@ -1,0 +1,20 @@
+# DEMO DATA — chỉ để chạy thử, không phải thông tin thật của team.
+# Playbook GA4. Các giá trị đánh dấu VÍ DỤ / TODO cần team điền theo thực tế trước khi test thật.
+source: ga4
+display_name: Google Analytics 4
+review_status: draft            # draft | reviewed — agent sẽ ghi rõ nếu playbook chưa review
+access_methods:
+  - type: bigquery_export
+    available_from: "2023-06-01"   # VÍ DỤ: ngày link GA4 -> BigQuery. Export KHÔNG backfill trước ngày link.
+    max_lookback_days: null
+    typical_lead_time_days: 5      # VÍ DỤ: thời gian team cần để dựng pipeline
+    notes: "Event-level, daily export. Không backfill trước ngày link (tài liệu chính thức GA4)."
+  - type: data_api
+    available_from: "2022-01-01"   # VÍ DỤ: ngày tạo property
+    max_lookback_days: null
+    typical_lead_time_days: 7
+    notes: "Data aggregated, có quota token, có thể bị sampling/thresholding."
+current_connector: "TODO: connector team đang dùng (vd. BQ export -> Snowflake)"
+existing_models: [stg_ga4__events, fct_ga4__sessions_daily]
+owner: "TODO"
+notes: ""

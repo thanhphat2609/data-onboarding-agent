@@ -1,0 +1,77 @@
+{
+  "_note": "DEMO DATA — xoá thư mục demo/ khi đã có catalog thật (scripts/export_dbt_catalog.py -> catalog/dbt_models.json).",
+  "generated_at": "2026-10-12",
+  "models": [
+    {
+      "name": "stg_ga4__events",
+      "source": "ga4",
+      "layer": "staging",
+      "description": "Event-level GA4 data từ BigQuery export, đã chuẩn hoá tên cột.",
+      "grain": "event",
+      "columns": [
+        "event_date",
+        "event_name",
+        "user_pseudo_id",
+        "session_id",
+        "page_location",
+        "traffic_source"
+      ],
+      "tags": [
+        "ga4",
+        "events",
+        "web"
+      ],
+      "data_from": "2023-06-01",
+      "refresh": "daily"
+    },
+    {
+      "name": "fct_ga4__sessions_daily",
+      "source": "ga4",
+      "layer": "mart",
+      "description": "Sessions, users, engaged sessions và conversions GA4 theo ngày, source/medium và campaign.",
+      "grain": "date x source x medium x campaign",
+      "columns": [
+        "date",
+        "session_source",
+        "session_medium",
+        "session_campaign",
+        "sessions",
+        "users",
+        "engaged_sessions",
+        "conversions"
+      ],
+      "tags": [
+        "ga4",
+        "sessions",
+        "traffic",
+        "marketing"
+      ],
+      "data_from": "2023-06-01",
+      "refresh": "daily"
+    },
+    {
+      "name": "stg_appsflyer__installs",
+      "source": "appsflyer",
+      "layer": "staging",
+      "description": "Install attribution từ AppsFlyer: media source, campaign, install time.",
+      "grain": "install",
+      "columns": [
+        "install_time",
+        "media_source",
+        "campaign",
+        "af_adset",
+        "country_code",
+        "platform",
+        "appsflyer_id"
+      ],
+      "tags": [
+        "appsflyer",
+        "mobile",
+        "installs",
+        "attribution"
+      ],
+      "data_from": "2024-01-01",
+      "refresh": "daily"
+    }
+  ]
+}

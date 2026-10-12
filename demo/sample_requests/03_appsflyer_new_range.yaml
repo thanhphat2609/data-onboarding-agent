@@ -1,0 +1,19 @@
+name: AppsFlyer installs từ 2023 — gap, user đổi date range
+today: "2026-10-12"
+initial_message: |
+  dataset: số install theo media source và campaign từ AppsFlyer để tính CPI
+  nguồn: appsflyer
+  date range: 2023-01-01 đến nay
+  eta: 2026-11-20
+  refresh: daily
+  grain: date x media_source x campaign
+  consumers: Team UA, dashboard CPI
+answers:
+  - "date range: 2024-06-01 đến nay"
+approval:
+  - {action: approve}
+expected:
+  max_turns: 5
+  gap_types: [date_range]
+  final_date_start: "2024-06-01"
+  recommendation: {appsflyer: stg_appsflyer__installs}
