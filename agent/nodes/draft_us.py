@@ -7,13 +7,62 @@ from agent.nodes.common import output_dir, rel
 KIND_LABEL = {"existing_model": "Reuse existing model", "ingest": "New ingestion"}
 
 
-def _pipeline_steps(request: dict, src: dict) -> list[str]:
+def current_research(state: dict) -> dict:
+    """Research for the sources still in the request (a reviewer edit may have dropped one)."""
+    sources = {s["source"] for s in state["feasibility"]["sources"] if s.get("recommendation") is None}
+    return {k: v for k, v in (state.get("research") or {}).items() if k in sources}
+
+
+def research_section(research: dict) -> list[str]:
+    if not research:
+        return []
+    lines = [
+        "## Web research (unverified)",
+        "_For sources without a playbook the agent read public docs. Nothing here has been checked by the team "
+        "and none of it was used in the feasibility result._",
+        "",
+    ]
+    for source, f in research.items():
+        lines.append(f"**{source}**")
+        if f.get("summary"):
+            lines.append(f["summary"])
+        for m in f.get("access_methods") or []:
+            limit = f", lookback ~{m['max_lookback_days']} days" if m.get("max_lookback_days") else ""
+            lines.append(f"- Possible access: `{m['type']}`{limit} — {m.get('notes', '')} ([source]({m.get('evidence')}))")
+        for p in f.get("key_passages") or []:
+            lines.append(f"- {p['topic']}: “{p['text']}” ([source]({p['url']}))")
+        read = [p for p in f.get("pages") or [] if not p.get("error")]
+        failed = [p for p in f.get("pages") or [] if p.get("error")]
+        if read:
+            lines.append("- Pages read: " + ", ".join(f"[{p['title'][:60]}]({p['url']}) ({p['origin']})" for p in read))
+        if failed:
+            lines.append("- Could not read: " + ", ".join(f"{p['url']} ({p['error'][:80]})" for p in failed))
+        lines += [f"- Note: {n}" for n in f.get("notes") or []]
+        if f.get("draft_playbook"):
+            lines.append(f"- Draft playbook: `{f['draft_playbook']}`")
+        lines.append("")
+    lines.append("## Questions for the Data Team")
+    n = 0
+    for source, f in research.items():
+        for q in f.get("questions") or []:
+            n += 1
+            lines.append(f"{n}. **{source}** — {q}")
+    lines.append("")
+    return lines
+
+
+def _pipeline_steps(request: dict, src: dict, research: dict | None = None) -> list[str]:
     source = src["source"]
     rec = src.get("recommendation")
     grain = request.get("grain", "")
     consumers = request.get("consumers", "")
     if rec is None:
-        return [f"Data Team investigates source `{source}` (no playbook yet) and proposes an access method."]
+        draft = (research or {}).get("draft_playbook")
+        return [
+            f"Data Team answers the questions below for `{source}` (no playbook yet) and picks an access method.",
+            f"Review the draft playbook `{draft}` and save it to `playbooks/`." if draft else f"Write `playbooks/{source}.yaml`.",
+            "Re-run the request through the agent to get a real feasibility check.",
+        ]
     if rec["kind"] == "existing_model":
         return [
             f"Reuse model `{rec['name']}` (already in the catalog, data from {rec['available_from'] or 'n/a'}).",
@@ -33,6 +82,7 @@ def _pipeline_steps(request: dict, src: dict) -> list[str]:
 def render_user_story(state: dict, title: str, description: str, extra_ac: list[str]) -> str:
     request = state["request"]
     feas = state["feasibility"]
+    research = current_research(state)
     dr = request["date_range"]
     lines = [
         f"# {title}",
@@ -62,13 +112,16 @@ def render_user_story(state: dict, title: str, description: str, extra_ac: list[
                 f"| {'✅' if rec['covers'] else '⚠️ no'} | {rec['ref']} |"
             )
         else:
-            lines.append(f"| {src['source']} | Needs investigation | ? | ? | no playbook |")
+            note = "no playbook — see web research below" if src["source"] in research else "no playbook"
+            lines.append(f"| {src['source']} | Needs investigation | ? | ? | {note} |")
 
     lines += ["", "## Proposed pipeline"]
     for src in feas["sources"]:
         lines.append(f"**{src['source']}**")
-        lines += [f"{i}. {step}" for i, step in enumerate(_pipeline_steps(request, src), 1)]
+        lines += [f"{i}. {step}" for i, step in enumerate(_pipeline_steps(request, src, research.get(src["source"])), 1)]
         lines.append("")
+
+    lines += research_section(research)
 
     ac = [
         f"Data is complete from {dr['start']} to {dr['end']} at grain `{request['grain']}`.",

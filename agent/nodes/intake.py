@@ -61,7 +61,11 @@ def gap_question(gaps: list[dict], unclear: bool) -> str:
     if starts:
         options.append(f"start the date range from {max(starts)}")
     if any(g["type"] == "unknown_source" for g in gaps):
-        options.append("continue with the source that has no playbook (the Data Team will investigate)")
+        options.append(
+            "continue without a playbook for that source — the agent will look up its public docs on the web, "
+            "but those findings are unverified: the source stays *Needs investigation* and the Data Team confirms it "
+            "(you can paste a link to the source's API docs with your answer)"
+        )
     lines.append(f"\nReply **ok** to accept: {'; '.join(options)}.")
     lines.append("Or propose an alternative, e.g. `date range: 2024-01-01 to now` or `source: ga4`.")
     return "\n".join(lines)

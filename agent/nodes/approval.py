@@ -12,6 +12,7 @@ def approval(state: dict) -> dict:
             "request": state["request"],
             "existing_models": [m["name"] for m in state.get("existing_models") or []],
             "feasibility": state["feasibility"],
+            "research": state.get("research") or {},
         }
     )
     if isinstance(decision, str):

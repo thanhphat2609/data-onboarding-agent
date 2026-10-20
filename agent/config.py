@@ -43,6 +43,12 @@ OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
 # Teams Workflows webhook: leave empty to mock (messages are written to outputs/).
 TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")
 
+# Web research for sources without a playbook (agent/research.py). WEB_RESEARCH=0 turns it off
+# (questions for the Data Team are still generated). doc_links.yaml lists known doc URLs per source.
+WEB_RESEARCH = os.getenv("WEB_RESEARCH", "1").strip().lower() not in ("0", "false", "no", "off")
+DOC_LINKS_PATH = Path(os.getenv("DOC_LINKS_PATH", ROOT / "doc_links.yaml"))
+RESEARCH_MAX_PAGES = int(os.getenv("RESEARCH_MAX_PAGES", "3"))
+
 # Max fields asked per turn, to stay within the <= 5 turns target.
 MAX_FIELDS_PER_QUESTION = 3
 # Minimum score for a dbt model to count as relevant to a request.

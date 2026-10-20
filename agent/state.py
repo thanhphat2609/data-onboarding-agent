@@ -52,6 +52,7 @@ class AgentState(TypedDict, total=False):
     feasibility: dict
     gap: list[dict]
     accepted_gaps: list[str]
+    research: dict[str, dict]  # source -> web research findings (sources without a playbook only)
     approved: bool
     review_comment: str
     outputs: dict[str, Any]

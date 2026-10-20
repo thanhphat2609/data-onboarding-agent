@@ -1,0 +1,17 @@
+# Official documentation links per source, read by the agent's web research (agent/research.py)
+# when a source has no playbook in playbooks/. These are read first; a DuckDuckGo search only fills
+# up the remaining slots (RESEARCH_MAX_PAGES, default 3).
+# Keys: source code as the agent stores it (lowercase; spaces or underscores both work, e.g. tiktok_ads).
+# Prefer pages that state data retention / history limits, API quotas and access methods.
+
+gsc:
+  - https://developers.google.com/search/blog/2023/02/bulk-data-export
+  - https://developers.google.com/webmaster-tools/v1/searchanalytics/query
+gam:
+  - https://developers.google.com/ad-manager/api/start
+dv360:
+  - https://developers.google.com/bid-manager
+cm:
+  - https://developers.google.com/doubleclick-advertisers
+dataforseo:
+  - https://docs.dataforseo.com/v3/

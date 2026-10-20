@@ -3,7 +3,7 @@
     intake ⇄ ask_user          (ask until all fields are filled / gaps are resolved)
     intake → notify → catalog_check → feasibility
     feasibility ─gap→ intake
-    feasibility → approval ─edit→ intake
+    feasibility → investigate_source → approval ─edit→ intake   (web research only for sources without a playbook)
     approval ─approve→ draft_us → summary → END
 """
 import sqlite3
@@ -13,7 +13,17 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 from agent import config
-from agent.nodes import approval, ask_user, catalog_check, draft_us, feasibility, intake, notify, summary
+from agent.nodes import (
+    approval,
+    ask_user,
+    catalog_check,
+    draft_us,
+    feasibility,
+    intake,
+    investigate_source,
+    notify,
+    summary,
+)
 from agent.state import AgentState
 
 
@@ -24,7 +34,7 @@ def route_intake(state: dict) -> str:
 
 
 def route_feasibility(state: dict) -> str:
-    return "intake" if state.get("gap") else "approval"
+    return "intake" if state.get("gap") else "investigate_source"
 
 
 def route_approval(state: dict) -> str:
@@ -38,6 +48,7 @@ def build_graph(checkpointer=None):
     g.add_node("notify", notify)
     g.add_node("catalog_check", catalog_check)
     g.add_node("feasibility", feasibility)
+    g.add_node("investigate_source", investigate_source)
     g.add_node("approval", approval)
     g.add_node("draft_us", draft_us)
     g.add_node("summary", summary)
@@ -47,7 +58,8 @@ def build_graph(checkpointer=None):
     g.add_edge("ask_user", "intake")
     g.add_edge("notify", "catalog_check")
     g.add_edge("catalog_check", "feasibility")
-    g.add_conditional_edges("feasibility", route_feasibility, ["intake", "approval"])
+    g.add_conditional_edges("feasibility", route_feasibility, ["intake", "investigate_source"])
+    g.add_edge("investigate_source", "approval")
     g.add_conditional_edges("approval", route_approval, ["draft_us", "intake"])
     g.add_edge("draft_us", "summary")
     g.add_edge("summary", END)

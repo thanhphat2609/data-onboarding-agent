@@ -24,6 +24,17 @@ runner = AgentRunner()
 
 # ---------- chat ----------
 
+def _research_md(f: dict | None) -> str:
+    if not f:
+        return ""
+    lines = [f" — web research ({f['pages_read']} page(s) read, unverified):"]
+    if f.get("summary"):
+        lines.append(f"  {f['summary']}")
+    lines += [f"  - {p['topic']}: “{p['text']}” ([source]({p['url']}))" for p in f.get("key_passages", [])[:4]]
+    lines.append(f"  - {len(f.get('questions', []))} question(s) for the Data Team in the User Story")
+    return "\n".join(lines)
+
+
 def _approval_md(ev: dict) -> str:
     feas = ev["feasibility"]
     lines = [f"### Pending approval — {ev['request_id']}", f"**Feasibility:** `{feas['overall']}`"]
@@ -34,7 +45,7 @@ def _approval_md(ev: dict) -> str:
         lines.append(
             f"- **{src['source']}**: {rec['kind']} `{rec['name']}` (data from {rec['available_from'] or 'n/a'}, per {rec['ref']})"
             if rec
-            else f"- **{src['source']}**: no playbook"
+            else f"- **{src['source']}**: no playbook" + _research_md(ev.get("research", {}).get(src["source"]))
         )
     if feas.get("risks"):
         lines.append("\n**Risks:**")
@@ -72,6 +83,7 @@ NODE_STATUS = {
     "notify": "Notifying the Data Team…",
     "catalog_check": "Searching the dbt catalog…",
     "feasibility": "Checking feasibility…",
+    "investigate_source": "Reading the web docs of sources without a playbook…",
     "draft_us": "Drafting the User Story…",
     "summary": "Sending the summary…",
 }

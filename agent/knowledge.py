@@ -23,8 +23,10 @@ def _load_playbook_file(path: str, mtime: float) -> dict:
 
 def lookup_playbook(source: str) -> dict | None:
     """Return the source playbook (with `_file` so outputs can cite it), or None if missing."""
-    path = config.PLAYBOOK_DIR / f"{norm(source)}.yaml"
-    if not path.exists():
+    # "tiktok ads" → tiktok ads.yaml or tiktok_ads.yaml (the name research drafts use)
+    names = dict.fromkeys([norm(source), re.sub(r"[^\w]+", "_", norm(source)).strip("_")])
+    path = next((p for n in names if (p := config.PLAYBOOK_DIR / f"{n}.yaml").exists()), None)
+    if path is None:
         return None
     data = dict(_load_playbook_file(str(path), path.stat().st_mtime))
     data["_file"] = path.relative_to(config.ROOT).as_posix() if path.is_relative_to(config.ROOT) else str(path)
