@@ -83,6 +83,7 @@ To make the source "known": review the draft, set `review_status: reviewed`, sav
 ---
 
 ## Known issues / backlog
+- ✅ *Fixed 2026-10-23.* **Relative ETAs were not understood.** "Go live should be next two weeks" made the agent repeat the ETA question with no explanation. It now reads relative dates in English and Vietnamese ("in 2 weeks", "end of next month", "2 tuần nữa", "cuối tháng") and confirms the date it computed ("Noted: go-live date 2026-11-06"). When nothing in an answer matches the questions, it says so instead of silently asking again.
 - **"ok" can be taken as a field answer.** If a field is still pending (e.g. "Used by"), replying `ok` stores "ok" as its value. Seen 2026-10-23. Fix idea: ignore yes-words as values for free-text fields.
 - **The Data Team can't ask the requester a question.** "Request changes" applies the comment as an edit to the request. A "send back with a question" action would need a new branch from `approval` to `ask_user`.
 - **The reviewer key is a soft gate**, not authentication; the app has no logins. Real auth (SSO in front of the app, or a Teams bot for approvals) is post-prototype.

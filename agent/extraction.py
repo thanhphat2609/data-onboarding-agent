@@ -1,7 +1,8 @@
 """Extract request fields from user replies (rule-based + optional LLM) and validate the request."""
+import calendar
 import re
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from agent.state import FREQUENCIES, KNOWN_SOURCES, REQUIRED_FIELDS
 
@@ -62,6 +63,65 @@ def to_date(value) -> date | None:
     return None
 
 
+# Relative dates for the ETA ("in two weeks", "end of next month", "2 tuần nữa", "cuối tháng"…).
+NUMBER_WORDS = {
+    "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+    "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "a couple of": 2, "couple of": 2,
+    "một": 1, "hai": 2, "ba": 3, "bốn": 4, "sáu": 6, "bảy": 7, "tám": 8, "chín": 9, "mười": 10,
+}
+_NUM = r"(\d{1,3}|" + "|".join(sorted(map(re.escape, NUMBER_WORDS), key=len, reverse=True)) + ")"
+_UNIT_EN = {"day": "day", "week": "week", "month": "month"}
+_UNIT_VI = {"ngày": "day", "tuần": "week", "tháng": "month"}
+
+
+def _add_months(d: date, n: int) -> date:
+    month = d.month - 1 + n
+    year, month = d.year + month // 12, month % 12 + 1
+    return date(year, month, min(d.day, calendar.monthrange(year, month)[1]))
+
+
+def _shift(today: date, n: int, unit: str) -> date:
+    if unit == "day":
+        return today + timedelta(days=n)
+    if unit == "week":
+        return today + timedelta(weeks=n)
+    return _add_months(today, n)
+
+
+def _end_of_month(d: date) -> date:
+    return d.replace(day=calendar.monthrange(d.year, d.month)[1])
+
+
+def relative_date(text: str, today: date) -> date | None:
+    """A future date written relative to today, or None. Explicit YYYY-MM-DD dates are handled elsewhere."""
+    t = norm(text)
+    if re.search(r"\bend of (?:the )?next month\b|cuối tháng (?:sau|tới)", t):
+        return _end_of_month(_add_months(today, 1))
+    if re.search(r"\bend of (?:the |this )?month\b|cuối tháng(?: này)?\b", t):
+        return _end_of_month(today)
+    if re.search(r"\bend of (?:the |this )?year\b|cuối năm", t):
+        return date(today.year, 12, 31)
+    m = re.search(
+        rf"\b(?:in|within|after)\s+(?:the\s+)?(?:next\s+)?{_NUM}\s+(day|week|month)s?\b"
+        rf"|\bnext\s+{_NUM}\s+(day|week|month)s?\b"
+        rf"|\b{_NUM}\s+(day|week|month)s?\s+(?:from now|from today|later)\b",
+        t,
+    )
+    if m:
+        groups = [g for g in m.groups() if g]
+        return _shift(today, int(groups[0]) if groups[0].isdigit() else NUMBER_WORDS[groups[0]], _UNIT_EN[groups[1]])
+    m = re.search(rf"(?:(?:sau|trong)\s+)?{_NUM}\s*(ngày|tuần|tháng)\s*(?:nữa|tới)?", t)
+    if m and (re.search(r"nữa|tới", m.group(0)) or re.match(r"sau|trong", m.group(0))):
+        n = int(m.group(1)) if m.group(1).isdigit() else NUMBER_WORDS[m.group(1)]
+        return _shift(today, n, _UNIT_VI[m.group(2)])
+    if m := re.search(r"\bnext (week|month)\b|(tuần|tháng) (?:sau|tới)", t):
+        unit = m.group(1) or _UNIT_VI[m.group(2)]
+        return _shift(today, 1, unit)
+    if re.search(r"\btomorrow\b|ngày mai", t):
+        return today + timedelta(days=1)
+    return None
+
+
 def _contains_word(text: str, word: str) -> bool:
     return re.search(rf"(?<![\w]){re.escape(word)}(?![\w])", text) is not None
 
@@ -111,7 +171,7 @@ def parse_field(field: str, value: str, today: date):
         return parse_range(value, today)
     if field == "eta":
         toks = re.findall(DATE_RE, value)
-        d = to_date(toks[0]) if toks else None
+        d = to_date(toks[0]) if toks else relative_date(value, today)
         return d.isoformat() if d else None
     if field == "refresh_frequency":
         return find_frequency(value)
@@ -168,9 +228,12 @@ def rule_extract(text: str, asked_fields: list[str] | None, today: date, first_m
             end = today if m.group(2) in TODAY_WORDS + ["nay"] else to_date(m.group(2))
             found["date_range"] = {"start": to_date(m.group(1)).isoformat(), "end": end.isoformat()}
     if "eta" not in found:
-        m = re.search(rf"(?:eta|go[- ]?live|deadline|needed by|due|trước ngày|cần trước|hạn)\D{{0,20}}({DATE_RE})", norm(free))
+        eta_kw = r"(?:eta|go[- ]?live|deadline|needed by|due|trước ngày|cần trước|hạn)"
+        m = re.search(rf"{eta_kw}\D{{0,20}}({DATE_RE})", norm(free))
         if m:
             found["eta"] = to_date(m.group(1)).isoformat()
+        elif (m := re.search(rf"{eta_kw}(.{{0,40}})", norm(free))) and (d := relative_date(m.group(1), today)):
+            found["eta"] = d.isoformat()
 
     # Free-text answer to exactly one asked field
     pending = [f for f in asked_fields if f not in found]

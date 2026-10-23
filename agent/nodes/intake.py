@@ -4,7 +4,7 @@ import re
 from langgraph.types import interrupt
 
 from agent import config
-from agent.extraction import is_yes, llm_extract, missing_fields, rule_extract, validate
+from agent.extraction import DATE_RE, is_yes, llm_extract, missing_fields, rule_extract, validate
 from agent.llm import get_llm, load_prompt, safe_call
 from agent.nodes.common import get_today
 from agent.state import FIELD_QUESTIONS
@@ -71,8 +71,12 @@ def gap_question(gaps: list[dict], unclear: bool) -> str:
     return "\n".join(lines)
 
 
-def fields_question(fields: list[str], errors: dict, first: bool) -> str:
-    lines = []
+def fields_question(fields: list[str], errors: dict, first: bool, unreadable: str = "", notes: list[str] = ()) -> str:
+    """unreadable: the user's last answer when nothing in it matched the questions asked."""
+    lines = list(notes)
+    if unreadable:
+        quoted = unreadable if len(unreadable) <= 80 else unreadable[:77] + "…"
+        lines.append(f"Sorry, I couldn't match “{quoted}” to my questions. Could you answer in the format below?\n")
     for field in fields:
         if field in errors:
             lines.append(f"⚠️ {errors[field]}")
@@ -99,6 +103,8 @@ def intake(state: dict) -> dict:
     text = "\n".join(m["content"] for m in msgs[n:] if m["role"] == "user").strip()
 
     unclear = False
+    unreadable = ""  # the answer, when nothing in it matched the fields just asked
+    notes: list[str] = []
     if text:
         kind = asked.get("kind")
         if kind == "gap" and gaps:
@@ -117,15 +123,24 @@ def intake(state: dict) -> dict:
         else:
             found = extract(text, request, asked.get("fields", []), today, first_message=(n == 0))
             request = _merge(request, found, text, incremental=(kind == "review"))
+            # Say so instead of silently repeating the question. A partial answer is fine: the rest is just asked again.
+            if kind == "fields" and asked.get("fields") and not found:
+                unreadable = text
+            # A relative date ("in two weeks") was turned into a calendar date: say which one.
+            if found.get("eta") and not re.search(DATE_RE, text):
+                notes.append(f"Noted: go-live date **{found['eta']}**.\n")
 
     request, errors = validate(request, today)
     missing = missing_fields(request)
+    if "eta" in errors:  # the ⚠️ line explains it instead
+        notes = [n for n in notes if "go-live" not in n]
 
     if gaps:
         asked, question = {"kind": "gap"}, gap_question(gaps, unclear)
     elif missing:
         fields = missing[: config.MAX_FIELDS_PER_QUESTION]
-        asked, question = {"kind": "fields", "fields": fields}, fields_question(fields, errors, first=(n == 0 and not request))
+        asked = {"kind": "fields", "fields": fields}
+        question = fields_question(fields, errors, first=(n == 0 and not request), unreadable=unreadable, notes=notes)
     else:
         asked, question = {}, ""
 
