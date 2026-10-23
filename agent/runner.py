@@ -55,3 +55,15 @@ class AgentRunner:
 
     def state(self, thread_id: str) -> dict:
         return self.graph.get_state(self._config(thread_id)).values
+
+    def threads(self, limit: int = 30) -> list[str]:
+        """Most recently updated thread_ids first (SQLite checkpointer only, else empty)."""
+        conn = getattr(self.graph.checkpointer, "conn", None)
+        if conn is None:
+            return []
+        rows = conn.execute(
+            "SELECT thread_id FROM checkpoints WHERE checkpoint_ns = '' "
+            "GROUP BY thread_id ORDER BY MAX(checkpoint_id) DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [r[0] for r in rows]

@@ -2,80 +2,229 @@
 
     python app.py            # local: http://127.0.0.1:7860
     python app.py --share    # temporary public link (Colab / team demo)
+    python app.py --host 0.0.0.0   # GitHub Codespaces / containers, see infrastructure/README.md
 
-One chat session = one thread_id. Enter an old thread_id to continue after a Colab disconnect.
-The "LLM settings" panel switches the Ollama host/model/API key at runtime (empty model = rule-based),
-e.g. to a model hosted on Colab behind scripts/ollama_auth_proxy.py.
-The "dbt catalog" panel syncs the catalog from a GitHub repo (token) or a local dbt project.
+Tabs:
+- Request: chat + a step tracker, a live "Your request" card, the review panel (Approve / Request changes)
+  and the finished User Story with download buttons. One chat session = one thread_id.
+- Sessions: reopen a recent session (e.g. after a Colab disconnect) from the list or by thread_id.
+- Settings: switch the Ollama host/model/API key at runtime (empty model = rule-based), e.g. a model hosted on
+  Colab behind scripts/ollama_auth_proxy.py; sync the dbt catalog from a GitHub repo (token) or a local dbt project.
+- Debug: raw agent state.
 """
 import argparse
+import hmac
+import html
 import json
-import os
+import re
 import time
+from pathlib import Path
 
 import gradio as gr
 from langgraph.types import Command
 
 from agent import catalog_sync, config, llm
 from agent.runner import AgentRunner
+from agent.state import REQUIRED_FIELDS
 
 runner = AgentRunner()
 
 
+# ---------- HTML helpers ----------
+
+def _esc(text) -> str:
+    return html.escape(str(text or ""))
+
+
+def _inline(text: str) -> str:
+    """Escape, then render the `code` and **bold** used in the agent's messages."""
+    s = re.sub(r"`([^`]+)`", r"<code>\1</code>", _esc(text))
+    return re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
+
+
+def _pill(text: str, tone: str = "neutral") -> str:
+    return f'<span class="pill pill-{tone}">{_esc(text)}</span>'
+
+
+def _header_html() -> str:
+    model = llm.get_llm()
+    model_pill = _pill(f"● {model.model}", "green") if model else _pill("○ Rule-based (no LLM)")
+    demo = config.demo_parts()
+    knowledge = _pill(f"DEMO {' + '.join(demo)}", "amber") if demo else _pill("Real playbooks + catalog", "green")
+    return f"""<div class="hero">
+  <div class="brand">
+    <div class="logo">◆</div>
+    <div>
+      <h1>Data Onboarding Agent</h1>
+      <p>Describe the data you need. The agent asks for what's missing, checks feasibility against the
+      playbooks and the dbt catalog, and drafts a User Story for the Data Team.</p>
+    </div>
+  </div>
+  <div class="hero-pills"><span class="pill-label">Model</span>{model_pill}<span class="pill-label">Knowledge</span>{knowledge}</div>
+</div>"""
+
+
+# Step tracker. "complete" = every step done.
+STEPS = [("describe", "Describe"), ("details", "Details"), ("feasibility", "Feasibility"), ("review", "Review"), ("story", "User Story")]
+# Which step a running node belongs to, so the tracker moves while the agent works.
+NODE_STEP = {
+    "intake": "details",
+    "notify": "details",
+    "catalog_check": "feasibility",
+    "feasibility": "feasibility",
+    "investigate_source": "feasibility",
+    "draft_us": "story",
+    "summary": "story",
+}
+
+
+def _stage(ev: dict, values: dict) -> str:
+    if ev["type"] == "done":
+        return "complete"
+    if ev["type"] == "approval":
+        return "review"
+    if ev["type"] == "question":
+        return "feasibility" if values.get("gap") else "details"
+    return "describe"
+
+
+def _stepper_html(stage: str) -> str:
+    keys = [k for k, _ in STEPS]
+    current = len(keys) if stage == "complete" else keys.index(stage)
+    items = []
+    for i, (_, label) in enumerate(STEPS):
+        if i < current:
+            cls, mark = "done", "✓"
+        elif i == current:
+            # A feasibility question means a gap the user has to resolve.
+            cls, mark = ("warn", "!") if stage == "feasibility" else ("active", str(i + 1))
+        else:
+            cls, mark = "todo", str(i + 1)
+        items.append(f'<li class="step step-{cls}"><span class="dot">{mark}</span><span>{label}</span></li>')
+    return f'<ol class="stepper">{"".join(items)}</ol>'
+
+
+FIELD_NAMES = {
+    "dataset_description": "What",
+    "sources": "Sources",
+    "date_range": "Date range",
+    "eta": "Go-live (ETA)",
+    "refresh_frequency": "Refresh",
+    "grain": "Grain",
+    "consumers": "Used by",
+}
+
+
+def _field_html(field: str, value) -> str:
+    if field == "sources":
+        return " ".join(_pill(s.upper() if len(s) <= 5 else s.title(), "blue") for s in value)
+    if field == "date_range":
+        return f"{_esc(value.get('start') or '?')} → {_esc(value.get('end') or 'now')}"
+    return _esc(value)
+
+
+def _request_html(values: dict) -> str:
+    """Live card of the 7 required fields, filled as the conversation goes."""
+    request, errors = values.get("request") or {}, values.get("errors") or {}
+    filled = sum(1 for f in REQUIRED_FIELDS if request.get(f))
+    rows = []
+    for f in REQUIRED_FIELDS:
+        body = _field_html(f, request[f]) if request.get(f) else '<span class="muted">Not provided yet</span>'
+        if errors.get(f):
+            body += f'<div class="err">{_esc(errors[f])}</div>'
+        rows.append(f'<div class="prop"><dt>{FIELD_NAMES[f]}</dt><dd>{body}</dd></div>')
+    pct = round(100 * filled / len(REQUIRED_FIELDS))
+    foot = f'<div class="card-foot">{_esc(values["request_id"])}</div>' if values.get("request_id") else ""
+    return f"""<div class="card">
+  <div class="card-head"><span>Your request</span><span class="muted">{filled}/{len(REQUIRED_FIELDS)} details</span></div>
+  <div class="bar"><div style="width:{pct}%"></div></div>
+  <dl class="props">{"".join(rows)}</dl>{foot}
+</div>"""
+
+
+OVERALL = {
+    "feasible": ("Feasible", "green"),
+    "feasible_with_risks": ("Feasible with risks", "amber"),
+    "gap": ("Gap found", "red"),
+}
+
+
+def _research_html(f: dict) -> str:
+    parts = [f'<div class="meta">Web research: {f.get("pages_read", 0)} page(s) read, unverified.</div>']
+    if f.get("summary"):
+        parts.append(f'<div class="meta">{_esc(f["summary"])}</div>')
+    for p in f.get("key_passages", [])[:3]:
+        link = f' <a href="{_esc(p["url"])}" target="_blank" rel="noopener">source</a>' if str(p.get("url", "")).startswith("http") else ""
+        parts.append(f'<div class="meta">• {_esc(p["topic"])}: “{_esc(p["text"])}”{link}</div>')
+    if n := len(f.get("questions", [])):
+        parts.append(f'<div class="meta">{n} question(s) for the Data Team added to the User Story.</div>')
+    return "".join(parts)
+
+
+def _source_html(src: dict, research: dict | None) -> str:
+    name = f'<b>{_esc(src["source"])}</b>'
+    rec = src.get("recommendation")
+    if not rec:
+        body = _pill("Needs investigation", "red") + ' <span class="muted">no playbook for this source yet</span>'
+        return f"<li>{name} {body}{_research_html(research) if research else ''}</li>"
+    if rec["kind"] == "existing_model":
+        what = _pill("Existing model", "green") + f" <code>{_esc(rec['name'])}</code>"
+    else:
+        what = _pill("New ingestion", "blue") + f" via <code>{_esc(rec['name'])}</code>"
+    meta = f'data from {_esc(rec.get("available_from") or "n/a")} · per <code>{_esc(rec["ref"])}</code>'
+    return f'<li>{name} {what}<div class="meta">{meta}</div></li>'
+
+
+def _approval_html(ev: dict, title: str, note: str = "") -> str:
+    """Feasibility card of a request waiting for approval: read-only for the requester, actionable in the review tab."""
+    feas, research = ev["feasibility"], ev.get("research") or {}
+    label, tone = OVERALL.get(feas["overall"], (feas["overall"], "neutral"))
+    parts = [f'<div class="card-head"><span>{_esc(title)}</span>{_pill(label, tone)}</div>']
+    if note:
+        parts.append(f'<div class="meta note">{_esc(note)}</div>')
+    if feas.get("data_already_available"):
+        parts.append('<div class="callout">✅ This data already exists in the dbt catalog, so no new ingestion is needed.</div>')
+    parts.append('<div class="section-label">Sources</div><ul class="sources">')
+    parts += [_source_html(s, research.get(s["source"])) for s in feas["sources"]]
+    parts.append("</ul>")
+    if feas.get("risks"):
+        parts.append('<div class="section-label">Risks</div><ul class="risks">')
+        parts += [f"<li>{_inline(r)}</li>" for r in feas["risks"]]
+        parts.append("</ul>")
+    return f'<div class="card flat">{"".join(parts)}</div>'
+
+
 # ---------- chat ----------
 
-def _research_md(f: dict | None) -> str:
-    if not f:
-        return ""
-    lines = [f" — web research ({f['pages_read']} page(s) read, unverified):"]
-    if f.get("summary"):
-        lines.append(f"  {f['summary']}")
-    lines += [f"  - {p['topic']}: “{p['text']}” ([source]({p['url']}))" for p in f.get("key_passages", [])[:4]]
-    lines.append(f"  - {len(f.get('questions', []))} question(s) for the Data Team in the User Story")
-    return "\n".join(lines)
+WELCOME = """## 👋 What data do you need?
+Describe it in your own words, in English or Vietnamese. The agent asks for anything missing
+(source, date range, go-live date, refresh, grain, who uses it), checks feasibility,
+and drafts a User Story for the Data Team to approve.
 
+Not sure how to start? Try one of these:"""
 
-def _approval_md(ev: dict) -> str:
-    feas = ev["feasibility"]
-    lines = [f"### Pending approval — {ev['request_id']}", f"**Feasibility:** `{feas['overall']}`"]
-    if feas.get("data_already_available"):
-        lines.append("**Data already available in the catalog** ✅")
-    for src in feas["sources"]:
-        rec = src.get("recommendation")
-        lines.append(
-            f"- **{src['source']}**: {rec['kind']} `{rec['name']}` (data from {rec['available_from'] or 'n/a'}, per {rec['ref']})"
-            if rec
-            else f"- **{src['source']}**: no playbook" + _research_md(ev.get("research", {}).get(src["source"]))
-        )
-    if feas.get("risks"):
-        lines.append("\n**Risks:**")
-        lines += [f"- {r}" for r in feas["risks"]]
-    return "\n".join(lines)
+EXAMPLES = [
+    {
+        "display_text": "📊 GA4 sessions by campaign for a dashboard",
+        "text": "The marketing team needs GA4 sessions, users and conversions by day and campaign for a channel performance dashboard.",
+    },
+    {
+        "display_text": "📱 AppsFlyer installs to compute CPI",
+        "text": "We need installs by media source and campaign from AppsFlyer since 2023-01-01 to compute CPI.",
+    },
+    {
+        "display_text": "🎵 TikTok Ads spend (source without a playbook)",
+        "text": "dataset: TikTok Ads spend and impressions by campaign\nsource: tiktok ads\ndate range: 2026-01-01 to now",
+    },
+]
 
-
-def _render(thread_id: str, ev: dict, history: list):
-    """Turn an agent event into UI updates."""
-    show_approval = ev["type"] == "approval"
-    approval_md = _approval_md(ev) if show_approval else ""
-    if ev["type"] == "question":
-        history.append({"role": "assistant", "content": ev["question"]})
-    elif show_approval:
-        history.append({"role": "assistant", "content": "I have everything I need and the feasibility check is done. Review it on the right, then click **Approve** or **Edit**."})
-    elif ev["type"] == "done":
-        us_path = config.ROOT / ev["outputs"]["user_story"]
-        us = us_path.read_text(encoding="utf-8") if us_path.exists() else ""
-        history.append({"role": "assistant", "content": f"✅ User Story created and summary sent to the Data Team.\n\n---\n{us}"})
-    values = runner.state(thread_id) if thread_id else {}
-    snapshot = {k: values.get(k) for k in ("request_id", "request", "missing_fields", "gap", "existing_models", "outputs") if values.get(k)}
-    return (
-        thread_id,
-        history,
-        gr.update(visible=show_approval),
-        approval_md,
-        json.dumps(snapshot, ensure_ascii=False, indent=2),
-        "",
-    )
-
+PLACEHOLDERS = {
+    "describe": "Describe the data you need…   (Shift+Enter for a new line)",
+    "details": "Answer here, one item per line, e.g. 1. from 2024-01-01 to now   (Shift+Enter for a new line)",
+    "feasibility": "Reply ok to accept, or suggest an alternative…",
+    "review": "Waiting for the Data Team. Type here only if you want to change your request…",
+    "complete": "Describe another data request to start a new one…",
+}
 
 # What the "thinking" bubble says while each node runs.
 NODE_STATUS = {
@@ -101,25 +250,102 @@ def _thought(steps: list[str], running: bool, title: str) -> dict:
     }
 
 
+def _reply(ev: dict, values: dict) -> list[dict]:
+    """The assistant's chat message for an agent event."""
+    if ev["type"] == "question":
+        text = ev["question"]
+    elif ev["type"] == "approval":
+        text = (
+            "Thanks, I have everything I need and the feasibility check is done. Your request is now with the "
+            "**Data Team** for review. This page updates when they approve it or ask for changes; "
+            "you can also come back later from **Sessions**."
+        )
+    elif ev["type"] == "done":
+        title = (values.get("outputs") or {}).get("title") or values.get("request_id", "")
+        text = f"✅ Done! **{title}**\n\nUser Story created and the summary was sent to the Data Team. Preview or download it on the right."
+    else:
+        return []
+    return [{"role": "assistant", "content": text}]
+
+
+def _result(values: dict) -> tuple:
+    """Title, preview and download buttons for a finished request."""
+    outputs = values.get("outputs") or {}
+
+    def path(key: str) -> str | None:
+        p = config.ROOT / outputs[key] if outputs.get(key) else None
+        return str(p) if p and p.exists() else None
+
+    us, summary = path("user_story"), path("summary")
+    title = f"### ✅ {_esc(outputs.get('title') or values.get('request_id', ''))}\nUser Story created and the summary was sent to the Data Team."
+    preview = Path(us).read_text(encoding="utf-8") if us else ""
+    return title, preview, gr.update(value=us, visible=bool(us)), gr.update(value=summary, visible=bool(summary))
+
+
+# Outputs of every chat handler, in this order:
+# thread_state, chat, box, stepper, request_card, waiting_box, waiting_html,
+# result_box, result_title, result_preview, us_download, summary_download, state_json, mark, poll_timer
+N_OUT = 15
+SKIP = tuple(gr.update() for _ in range(N_OUT))
+
+
+def _mark(ev: dict, values: dict) -> str:
+    """Fingerprint of a thread's progress; the review poll compares it to spot a Data Team decision."""
+    return f"{len(values.get('messages') or [])}:{ev['type']}"
+
+
+def _view(thread_id: str, history: list, ev: dict | None = None) -> tuple:
+    """Every panel of the Request tab, from the thread's current state."""
+    values = runner.state(thread_id) if thread_id else {}
+    ev = ev or (runner.current_event(thread_id) if thread_id else {"type": "empty"})
+    stage = _stage(ev, values)
+    review, done = stage == "review", stage == "complete"
+    result = _result(values) if done else ("", "", gr.update(value=None, visible=False), gr.update(value=None, visible=False))
+    snapshot = {k: values.get(k) for k in ("request_id", "request", "missing_fields", "gap", "existing_models", "outputs") if values.get(k)}
+    waiting = _approval_html(
+        ev, "Waiting for Data Team review", "The Data Team approves it or asks for changes. This page updates on its own."
+    ) if review else ""
+    return (
+        thread_id,
+        history,
+        gr.update(value="", placeholder=PLACEHOLDERS[stage]),
+        _stepper_html(stage),
+        _request_html(values),
+        gr.update(visible=review),
+        waiting,
+        gr.update(visible=done),
+        *result,
+        json.dumps(snapshot, ensure_ascii=False, indent=2),
+        _mark(ev, values),
+        gr.Timer(active=review),  # poll for the Data Team's decision only while it is pending
+    )
+
+
+def _busy(thread_id: str, history: list, stepper=None) -> tuple:
+    """While the agent runs: show the thinking bubble, clear the input, hide the waiting panel."""
+    keep = gr.update()
+    return (thread_id, history, gr.update(value=""), stepper or keep, keep, gr.update(visible=False), *[keep] * 9)
+
+
 def _run(thread_id: str, graph_input, history: list):
     """Stream the graph: show the user's message and a live "thinking" block, then the real answer."""
     started, steps = time.perf_counter(), []
-    # Hide the approval panel while working, and clear the input box right away.
-    yield thread_id, history + [_thought(steps, True, "Thinking…")], gr.update(visible=False), gr.update(), gr.update(), ""
+    yield _busy(thread_id, history + [_thought(steps, True, "Thinking…")])
     ev = {"type": "empty"}
     for ev in runner.stream(thread_id, graph_input):
         if ev["type"] == "progress" and ev["node"] in NODE_STATUS:
             steps.append(NODE_STATUS[ev["node"]])
-            yield thread_id, history + [_thought(steps, True, steps[-1])], gr.update(), gr.update(), gr.update(), ""
+            stepper = _stepper_html(NODE_STEP[ev["node"]])
+            yield _busy(thread_id, history + [_thought(steps, True, steps[-1])], stepper)
     # Collapse into a "Thought for Xs" line above the answer, like chat assistants do.
     done = _thought(steps, False, f"Thought for {time.perf_counter() - started:.1f}s")
-    yield _render(thread_id, ev, history + [done])
+    yield _view(thread_id, history + [done] + _reply(ev, runner.state(thread_id)), ev)
 
 
 def on_send(message: str, thread_id: str, history: list):
     message = (message or "").strip()
     if not message:
-        yield thread_id, history, gr.update(), gr.update(), gr.update(), ""
+        yield SKIP
         return
     history = history + [{"role": "user", "content": message}]
     ev = runner.current_event(thread_id) if thread_id else {"type": "empty"}
@@ -132,27 +358,122 @@ def on_send(message: str, thread_id: str, history: list):
     yield from _run(thread_id, graph_input, history)
 
 
-def on_decision(action: str):
-    def handler(comment: str, thread_id: str, history: list):
-        if action == "edit" and not (comment or "").strip():
-            gr.Warning("Describe what to change in the comment box before clicking Edit.")
-            yield thread_id, history, gr.update(), gr.update(), gr.update(), comment
-            return
-        label = "👍 Approve" if action == "approve" else f"✏️ Edit: {comment}"
-        history = history + [{"role": "user", "content": label}]
-        yield from _run(thread_id, Command(resume={"action": action, "comment": comment or ""}), history)
+def on_example(evt: gr.SelectData, thread_id: str, history: list):
+    text = evt.value.get("text", "") if isinstance(evt.value, dict) else str(evt.value)
+    yield from on_send(text, thread_id, history)
+
+
+def on_poll(thread_id: str, history: list, mark: str):
+    """Requester side, while waiting for review: show the Data Team's decision once it lands."""
+    if not thread_id:
+        return SKIP
+    ev = runner.current_event(thread_id)
+    values = runner.state(thread_id)
+    # "empty" = the graph is still running after the decision (e.g. drafting the User Story); wait for the result.
+    if ev["type"] == "empty" or _mark(ev, values) == mark:
+        return SKIP
+    if values.get("approved"):
+        note = "✅ The **Data Team approved** your request."
+    else:
+        comment = values.get("review_comment") or ""
+        note = f"✏️ The **Data Team updated** your request: “{comment}”. The feasibility check was re-run."
+    return _view(thread_id, history + [{"role": "assistant", "content": note}] + _reply(ev, values), ev)
+
+
+# ---------- Data Team review ----------
+
+def _review_queue() -> list[tuple[str, str]]:
+    """Requests waiting for approval, newest first."""
+    choices = []
+    for tid in runner.threads(100):
+        if runner.current_event(tid)["type"] != "approval":
+            continue
+        values = runner.state(tid)
+        request = values.get("request") or {}
+        desc = (request.get("dataset_description") or "")[:70]
+        choices.append((f"{values.get('request_id', tid)} · {', '.join(request.get('sources', []))} · {desc}", tid))
+    return choices
+
+
+def on_review_refresh():
+    choices = _review_queue()
+    msg = f"**{len(choices)}** request(s) waiting for review." if choices else "Nothing waiting for review. 🎉"
+    return gr.update(choices=choices, value=None), msg, gr.update(visible=False)
+
+
+def on_review_open(thread_id: str):
+    if not thread_id:
+        return gr.update(visible=False), "", "", ""
+    ev = runner.current_event(thread_id)
+    if ev["type"] != "approval":
+        gr.Warning("This request is no longer waiting for review. Refresh the list.")
+        return gr.update(visible=False), "", "", ""
+    values = runner.state(thread_id)
+    return gr.update(visible=True), _request_html(values), _approval_html(ev, "Feasibility check"), ""
+
+
+def on_review_decision(action: str):
+    def handler(thread_id: str, comment: str):
+        comment = (comment or "").strip()
+        keep = gr.update()
+        if not thread_id or runner.current_event(thread_id)["type"] != "approval":
+            gr.Warning("This request is no longer waiting for review. Refresh the list.")
+            return keep, keep, keep, keep, keep
+        if action == "edit" and not comment:
+            gr.Warning("Write what should change in the comment box first.")
+            return keep, keep, keep, keep, keep
+        runner.reply(thread_id, {"action": action, "comment": comment})
+        values = runner.state(thread_id)
+        if action == "approve":
+            title = (values.get("outputs") or {}).get("title") or values.get("request_id", "")
+            msg = f"✅ Approved **{values.get('request_id', '')}**. User Story created: {title}. The requester sees it in their session."
+            us = _result(values)[2]
+        else:
+            status = SESSION_STATUS.get(runner.current_event(thread_id)["type"], "")
+            msg = f"✏️ Sent back to **{values.get('request_id', '')}** with your comment. The request was updated and is now {status}."
+            us = gr.update(value=None, visible=False)
+        queue = _review_queue()
+        return msg, us, gr.update(visible=False), gr.update(choices=queue, value=None), ""
 
     return handler
 
 
-def on_resume(old_thread_id: str):
-    old_thread_id = (old_thread_id or "").strip()
-    values = runner.state(old_thread_id) if old_thread_id else {}
+def on_unlock(key: str):
+    if hmac.compare_digest((key or "").encode(), config.REVIEWER_KEY.encode()):
+        return gr.update(visible=False), gr.update(visible=True), *on_review_refresh()[:2]
+    gr.Warning("Wrong reviewer key.")
+    return gr.update(), gr.update(), gr.update(), gr.update()
+
+
+# ---------- sessions ----------
+
+SESSION_STATUS = {"question": "waiting for the requester's answer", "approval": "waiting for Data Team review", "done": "done", "empty": "started"}
+
+
+def _session_choices() -> list[tuple[str, str]]:
+    choices = []
+    for tid in runner.threads():
+        values = runner.state(tid)
+        if not values:
+            continue
+        sources = ", ".join((values.get("request") or {}).get("sources", [])) or "no source yet"
+        status = SESSION_STATUS.get(runner.current_event(tid)["type"], "")
+        choices.append((f"{values.get('request_id', tid)} · {sources} · {status}", tid))
+    return choices
+
+
+def on_refresh_sessions():
+    return gr.update(choices=_session_choices(), value=None)
+
+
+def on_resume(picked: str, pasted: str):
+    thread_id = (pasted or "").strip() or (picked or "")
+    values = runner.state(thread_id) if thread_id else {}
     if not values:
-        gr.Warning("Session not found in the checkpoint.")
-        return "", [], gr.update(visible=False), "", "{}", ""
+        gr.Warning("Session not found. Pick one from the list or check the thread_id.")
+        return (*SKIP, gr.update())
     history = [{"role": m["role"], "content": m["content"]} for m in values.get("messages", [])]
-    return _render(old_thread_id, runner.current_event(old_thread_id), history)
+    return (*_view(thread_id, history), gr.Tabs(selected="request"))
 
 
 # ---------- LLM settings ----------
@@ -182,12 +503,12 @@ def on_test(host: str, api_key: str, model: str):
 
 def on_apply(host: str, api_key: str, model: str):
     llm.configure(host, model, api_key)
-    return f"**In use:** {llm.status()}"
+    return f"**In use:** {llm.status()}", _header_html()
 
 
 def on_disable(host: str):
     llm.configure(host, "")
-    return f"**In use:** {llm.status()}"
+    return f"**In use:** {llm.status()}", _header_html()
 
 
 # ---------- dbt catalog ----------
@@ -201,18 +522,13 @@ def _catalog_md() -> str:
     return f"**Current catalog:** {len(data.get('models', []))} models · from `{origin}` · {data.get('generated_at', '')}"
 
 
-def _demo_banner() -> str:
-    demo = config.demo_parts()
-    return f"> ⚠️ Using **DEMO {' + '.join(demo)}** from `demo/`." if demo else ""
-
-
 def on_sync_catalog(mode: str, repo: str, ref: str, subdir: str, token: str, local_path: str):
     try:
         if mode == "GitHub":
             if not repo.strip():
                 return "Enter the repo as `owner/name`.", gr.update(), gr.update()
-            # Token from the UI field, else from the GITHUB_TOKEN env var. Never written to disk.
-            models = catalog_sync.from_github(repo, token.strip() or os.getenv("GITHUB_TOKEN", ""), ref.strip() or "main", subdir)
+            # Token from the UI field, else from DBT_GITHUB_TOKEN / GITHUB_TOKEN. Never written to disk.
+            models = catalog_sync.from_github(repo, token.strip() or config.dbt_github_token(), ref.strip() or "main", subdir)
             origin = f"github:{repo.strip()}@{ref.strip() or 'main'}/{subdir.strip()}"
         elif local_path.strip().endswith(".json"):
             models, origin = catalog_sync.from_manifest_file(local_path.strip()), f"manifest:{local_path.strip()}"
@@ -223,10 +539,16 @@ def on_sync_catalog(mode: str, repo: str, ref: str, subdir: str, token: str, loc
     if not models:
         return "⚠️ No models found — the current catalog is kept.", gr.update(), gr.update()
     catalog_sync.save_catalog(models, origin)
-    return f"✅ Synced {len(models)} models.", _catalog_md(), _demo_banner()
+    return f"✅ Synced {len(models)} models.", _catalog_md(), _header_html()
 
 
 # ---------- layout ----------
+
+THEME = gr.themes.Soft(
+    primary_hue="indigo",
+    neutral_hue="slate",
+    font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "system-ui", "sans-serif"],
+)
 
 # One slim scrollbar inside the chat, no extra scroll on the wrapper.
 CSS = """
@@ -246,92 +568,245 @@ CSS += """
   animation: thinking-shimmer 1.6s linear infinite;
 }
 """
+# Header, status pills, step tracker, cards.
+CSS += """
+.hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; padding: 4px 2px 6px; }
+.hero .brand { display: flex; gap: 14px; align-items: flex-start; max-width: 780px; }
+.hero .logo { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+  color: #fff; font-size: 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+.hero h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+.hero p { margin: 4px 0 0; color: var(--body-text-color-subdued); font-size: 14px; line-height: 1.5; }
+.hero-pills { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 6px; }
+.pill-label { font-size: 12px; color: var(--body-text-color-subdued); margin-left: 6px; }
+
+.pill { display: inline-flex; align-items: center; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 550;
+  line-height: 20px; white-space: nowrap; border: 1px solid transparent; vertical-align: middle; }
+.pill-neutral { background: rgba(100,116,139,.12); color: var(--body-text-color); border-color: rgba(100,116,139,.25); }
+.pill-green { background: rgba(22,163,74,.10); color: #15803d; border-color: rgba(22,163,74,.30); }
+.pill-amber { background: rgba(217,119,6,.10); color: #b45309; border-color: rgba(217,119,6,.30); }
+.pill-red { background: rgba(220,38,38,.08); color: #b91c1c; border-color: rgba(220,38,38,.30); }
+.pill-blue { background: rgba(79,70,229,.08); color: #4338ca; border-color: rgba(79,70,229,.25); }
+.dark .pill-green { color: #4ade80; } .dark .pill-amber { color: #fbbf24; }
+.dark .pill-red { color: #f87171; } .dark .pill-blue { color: #a5b4fc; }
+
+.toolbar { align-items: center !important; margin-bottom: -4px; }
+.stepper { display: flex; flex-wrap: wrap; align-items: center; list-style: none; margin: 0 !important; padding: 0 !important; row-gap: 6px; }
+.stepper .step { display: flex; align-items: center; gap: 8px; margin: 0 !important; padding: 0 !important;
+  font-size: 13px; color: var(--body-text-color-subdued); }
+.stepper .step:not(:last-child)::after { content: ""; width: 26px; height: 2px; margin: 0 10px; border-radius: 2px; background: var(--border-color-primary); }
+.stepper .dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700;
+  border: 1.5px solid var(--border-color-primary); background: var(--block-background-fill); }
+.stepper .step-done { color: var(--body-text-color); }
+.stepper .step-done .dot { background: #6366f1; border-color: #6366f1; color: #fff; }
+.stepper .step-done:not(:last-child)::after { background: #6366f1; }
+.stepper .step-active, .stepper .step-warn { color: var(--body-text-color); font-weight: 600; }
+.stepper .step-active .dot { border-color: #6366f1; color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
+.stepper .step-warn .dot { border-color: #d97706; color: #d97706; box-shadow: 0 0 0 3px rgba(217,119,6,.18); }
+
+.card { border: 1px solid var(--border-color-primary); border-radius: 12px; padding: 14px 16px; background: var(--block-background-fill); }
+.card.flat { border: none; padding: 14px 16px 4px; }
+.card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; margin-bottom: 10px; }
+.muted { color: var(--body-text-color-subdued); font-weight: 400; font-size: 13px; }
+.bar { height: 4px; border-radius: 4px; background: var(--border-color-primary); overflow: hidden; margin-bottom: 8px; }
+.bar > div { height: 100%; background: #6366f1; transition: width .4s ease; }
+.props { margin: 0; }
+.prop { display: grid; grid-template-columns: 104px 1fr; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border-color-primary); font-size: 13px; }
+.prop:first-child { border-top: none; }
+.prop dt { margin: 0; color: var(--body-text-color-subdued); }
+.prop dd { margin: 0; word-break: break-word; }
+.err { color: #dc2626; font-size: 12px; margin-top: 2px; }
+.card-foot { margin-top: 8px; font-size: 12px; color: var(--body-text-color-subdued); font-family: var(--font-mono); }
+.card code { font-size: 12px; }
+.section-label { margin: 12px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--body-text-color-subdued); }
+.sources, .risks { list-style: none; margin: 0 !important; padding: 0 !important; font-size: 13px; }
+.sources li { margin: 0 !important; padding: 7px 0; border-top: 1px solid var(--border-color-primary); }
+.sources li:first-child { border-top: none; }
+.risks li { position: relative; margin: 0 !important; padding: 3px 0 3px 20px; }
+.risks li::before { content: "⚠"; position: absolute; left: 0; color: #d97706; }
+.meta { margin-top: 3px; font-size: 12px; color: var(--body-text-color-subdued); }
+.meta.note { margin: -4px 0 8px; }
+.callout { margin-bottom: 4px; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: rgba(22,163,74,.10); }
+
+.review-box, .result-box { border: 1.5px solid #6366f1 !important; border-radius: 12px !important; overflow: hidden;
+  box-shadow: 0 6px 20px rgba(79,70,229,.10); margin-bottom: 12px; }
+.result-title { padding: 12px 16px 4px !important; }
+.result-title h3 { margin: 0 0 6px; font-size: 16px; }
+.us-preview { max-height: 50vh; overflow: auto; }
+
+/* Example prompts in the empty chat as clickable cards. */
+#chat .examples { gap: 10px !important; }
+#chat .examples .example { border: 1px solid var(--border-color-primary) !important; border-radius: 12px !important;
+  padding: 12px 14px !important; background: var(--block-background-fill) !important; text-align: left;
+  transition: border-color .15s, box-shadow .15s, transform .15s; }
+#chat .examples .example:hover { border-color: #6366f1 !important; box-shadow: 0 4px 14px rgba(79,70,229,.12); transform: translateY(-1px); }
+
+/* Phone: step tracker shows dots only, plus the current step's name. */
+@media (max-width: 640px) {
+  .toolbar { flex-wrap: wrap !important; }
+  .toolbar > * { min-width: 100% !important; }
+  .stepper .step > span:last-child { display: none; }
+  .stepper .step-active > span:last-child, .stepper .step-warn > span:last-child { display: inline; }
+  .stepper .step:not(:last-child)::after { width: 12px; margin: 0 6px; }
+}
+"""
+
 
 def build_ui() -> gr.Blocks:
     with gr.Blocks(title="Data Onboarding Agent") as demo:
         thread_state = gr.State("")
-        gr.Markdown("## Data Onboarding Agent\nDescribe the data you need — the agent will ask follow-up questions, check feasibility and draft a User Story.")
-        demo_banner = gr.Markdown(_demo_banner())
-        with gr.Row():
-            with gr.Column(scale=3):
-                chat = gr.Chatbot(elem_id="chat", show_label=False, min_height=320, max_height="65vh", buttons=[])  # grows with content, then scrolls
-                with gr.Row():
-                    box = gr.Textbox(placeholder="e.g. I need GA4 sessions by campaign for the marketing dashboard…", scale=5, show_label=False)
-                    send = gr.Button("Send", variant="primary", scale=1)
-            with gr.Column(scale=2):
-                with gr.Group(visible=False) as approval_box:
-                    approval_md = gr.Markdown()
-                    comment = gr.Textbox(label="Comment (required for Edit)", placeholder="e.g. change eta to 2026-12-01")
-                    with gr.Row():
-                        approve_btn = gr.Button("Approve", variant="primary")
-                        edit_btn = gr.Button("Edit")
-                with gr.Accordion("⚙️ LLM settings", open=False):
-                    llm_status = gr.Markdown(f"**In use:** {llm.status()}")
-                    host = gr.Textbox(label="Ollama host", value=config.OLLAMA_HOST, info="Local: http://localhost:11434 · Colab: URL tunnel (https://….trycloudflare.com)")
-                    api_key = gr.Textbox(label="API key", type="password", value=config.OLLAMA_API_KEY, info="Only needed for the Colab-hosted model (behind the proxy)")
-                    with gr.Row():
-                        model = gr.Dropdown(
-                            label="Model",
-                            choices=[config.OLLAMA_MODEL] if config.OLLAMA_MODEL else [],
-                            value=config.OLLAMA_MODEL or None,
-                            allow_custom_value=True,
-                            scale=3,
-                        )
-                        refresh_btn = gr.Button("🔄 Fetch models", scale=1)
-                    with gr.Row():
-                        test_btn = gr.Button("Test")
-                        apply_btn = gr.Button("Apply", variant="primary")
-                        disable_btn = gr.Button("Disable LLM")
-                    llm_msg = gr.Markdown()
-                with gr.Accordion("📦 dbt catalog", open=False):
-                    catalog_md = gr.Markdown(_catalog_md())
-                    cat_mode = gr.Radio(["GitHub", "Local"], value="GitHub", label="Source")
-                    with gr.Group():
-                        gh_repo = gr.Textbox(label="Repo", placeholder="owner/dbt-repo")
-                        with gr.Row():
-                            gh_ref = gr.Textbox(label="Branch", value="main")
-                            gh_subdir = gr.Textbox(label="dbt project folder in the repo", placeholder="(empty if at the root)")
-                        gh_token = gr.Textbox(label="GitHub token", type="password", placeholder="empty = use the GITHUB_TOKEN env var")
-                    local_path = gr.Textbox(label="Local: dbt project folder or manifest.json file")
-                    sync_btn = gr.Button("Sync catalog", variant="primary")
-                    sync_msg = gr.Markdown()
-                with gr.Accordion("Current state", open=False):
-                    state_json = gr.Code(language="json")
-                with gr.Accordion("Resume a session", open=False):
-                    thread_label = gr.Textbox(label="Current thread_id", interactive=False)
-                    old_tid = gr.Textbox(label="thread_id to resume")
-                    resume_btn = gr.Button("Resume")
-                new_btn = gr.Button("New session")
+        header = gr.HTML(_header_html())
 
-        outputs = [thread_state, chat, approval_box, approval_md, state_json, box]
-        # The chat shows its own "⏳ thinking" bubble, so hide Gradio's progress overlay.
+        with gr.Tabs(selected="request") as tabs:
+            with gr.Tab("💬 Request", id="request"):
+                with gr.Row(elem_classes="toolbar"):
+                    stepper = gr.HTML(_stepper_html("describe"))
+                    new_btn = gr.Button("＋ New request", size="sm", scale=0, min_width=140)
+                with gr.Row(equal_height=False):
+                    with gr.Column(scale=3):
+                        chat = gr.Chatbot(
+                            elem_id="chat", show_label=False, height="56vh", buttons=[], placeholder=WELCOME, examples=EXAMPLES
+                        )
+                        box = gr.Textbox(
+                            show_label=False, placeholder=PLACEHOLDERS["describe"], lines=1, max_lines=8, submit_btn="Send", autofocus=True
+                        )
+                    with gr.Column(scale=2):
+                        # Read-only for the requester: the Data Team decides in the review tab.
+                        with gr.Group(visible=False, elem_classes="review-box") as waiting_box:
+                            waiting_html = gr.HTML()
+                        with gr.Group(visible=False, elem_classes="result-box") as result_box:
+                            result_title = gr.Markdown(elem_classes="result-title")
+                            with gr.Row():
+                                us_dl = gr.DownloadButton("⬇ User Story (.md)", variant="primary", size="sm", visible=False)
+                                sum_dl = gr.DownloadButton("⬇ Summary (.md)", size="sm", visible=False)
+                            with gr.Accordion("Preview User Story", open=False):
+                                result_preview = gr.Markdown(elem_classes="us-preview")
+                        request_card = gr.HTML(_request_html({}))
+
+            with gr.Tab("🗂 Sessions", id="sessions") as sessions_tab:
+                gr.Markdown("Sessions are saved automatically. Reopen one to continue where you left off, e.g. after a disconnect.")
+                with gr.Row(equal_height=True):
+                    session_dd = gr.Dropdown(label="Recent sessions", choices=[], scale=5)
+                    refresh_sessions = gr.Button("↻ Refresh", scale=0, min_width=110)
+                old_tid = gr.Textbox(label="…or paste a thread_id")
+                resume_btn = gr.Button("Open session", variant="primary")
+                thread_label = gr.Textbox(label="Current thread_id", interactive=False)
+
+            with gr.Tab("🛡 Data Team review", id="review") as review_tab:
+                with gr.Group(visible=bool(config.REVIEWER_KEY)) as review_gate:
+                    gr.Markdown("### Data Team only\nEnter the reviewer key to approve requests.", elem_classes="result-title")
+                    with gr.Row(equal_height=True):
+                        reviewer_key = gr.Textbox(show_label=False, type="password", placeholder="Reviewer key", scale=4)
+                        unlock_btn = gr.Button("Unlock", variant="primary", scale=1)
+                with gr.Column(visible=not config.REVIEWER_KEY) as review_area:
+                    review_count = gr.Markdown()
+                    with gr.Row(equal_height=True):
+                        review_dd = gr.Dropdown(label="Waiting for review", choices=[], scale=5)
+                        review_refresh = gr.Button("↻ Refresh", scale=0, min_width=110)
+                    review_msg = gr.Markdown()
+                    review_us = gr.DownloadButton("⬇ User Story (.md)", size="sm", visible=False)
+                    with gr.Row(equal_height=False, visible=False) as review_panel:
+                        with gr.Column(scale=1):
+                            review_request = gr.HTML()
+                        with gr.Column(scale=1):
+                            with gr.Group(elem_classes="review-box"):
+                                review_feas = gr.HTML()
+                                review_comment = gr.Textbox(
+                                    show_label=False,
+                                    placeholder="Comment: what should change? e.g. change eta to 2026-12-01 (needed for Request changes)",
+                                )
+                                with gr.Row():
+                                    approve_btn = gr.Button("✓ Approve", variant="primary")
+                                    edit_btn = gr.Button("✎ Request changes")
+
+            with gr.Tab("⚙️ Settings", id="settings"):
+                with gr.Row(equal_height=False):
+                    with gr.Column():
+                        gr.Markdown("### LLM\nRule-based works without a model; an LLM phrases questions and the User Story better.")
+                        llm_status = gr.Markdown(f"**In use:** {llm.status()}")
+                        host = gr.Textbox(label="Ollama host", value=config.OLLAMA_HOST, info="Local: http://localhost:11434 · Colab: URL tunnel (https://….trycloudflare.com)")
+                        api_key = gr.Textbox(label="API key", type="password", value=config.OLLAMA_API_KEY, info="Only needed for the Colab-hosted model (behind the proxy)")
+                        with gr.Row():
+                            model = gr.Dropdown(
+                                label="Model",
+                                choices=[config.OLLAMA_MODEL] if config.OLLAMA_MODEL else [],
+                                value=config.OLLAMA_MODEL or None,
+                                allow_custom_value=True,
+                                scale=3,
+                            )
+                            refresh_btn = gr.Button("🔄 Fetch models", scale=1)
+                        with gr.Row():
+                            test_btn = gr.Button("Test")
+                            apply_btn = gr.Button("Apply", variant="primary")
+                            disable_btn = gr.Button("Disable LLM")
+                        llm_msg = gr.Markdown()
+                    with gr.Column():
+                        gr.Markdown("### dbt catalog\nThe agent recommends existing dbt models before any new ingestion.")
+                        catalog_md = gr.Markdown(_catalog_md())
+                        cat_mode = gr.Radio(["GitHub", "Local"], value="GitHub", label="Source")
+                        with gr.Group() as gh_group:
+                            gh_repo = gr.Textbox(label="Repo", placeholder="owner/dbt-repo")
+                            with gr.Row():
+                                gh_ref = gr.Textbox(label="Branch", value="main")
+                                gh_subdir = gr.Textbox(label="dbt project folder in the repo", placeholder="(empty if at the root)")
+                            gh_token = gr.Textbox(label="GitHub token", type="password", placeholder="empty = use the DBT_GITHUB_TOKEN / GITHUB_TOKEN env var")
+                        local_path = gr.Textbox(label="dbt project folder or manifest.json file", visible=False)
+                        sync_btn = gr.Button("Sync catalog", variant="primary")
+                        sync_msg = gr.Markdown()
+
+            with gr.Tab("🔧 Debug", id="debug"):
+                gr.Markdown("Raw agent state of the current session.")
+                state_json = gr.Code(language="json")
+
+        mark = gr.State("")
+        poll_timer = gr.Timer(5, active=False)
+
+        outputs =[thread_state, chat, box, stepper, request_card, waiting_box, waiting_html,
+                   result_box, result_title, result_preview, us_dl, sum_dl, state_json, mark, poll_timer]
+        assert len(outputs) == N_OUT
+        # The chat shows its own "thinking" bubble, so hide Gradio's progress overlay.
         busy = {"show_progress": "hidden"}
-        send.click(on_send, [box, thread_state, chat], outputs, **busy)
         box.submit(on_send, [box, thread_state, chat], outputs, **busy)
-        approve_btn.click(on_decision("approve"), [comment, thread_state, chat], outputs[:-1] + [comment], **busy)
-        edit_btn.click(on_decision("edit"), [comment, thread_state, chat], outputs[:-1] + [comment], **busy)
-        resume_btn.click(on_resume, [old_tid], outputs, **busy)
-        new_btn.click(lambda: ("", [], gr.update(visible=False), "", "{}", ""), None, outputs)
+        chat.example_select(on_example, [thread_state, chat], outputs, **busy)
+        poll_timer.tick(on_poll, [thread_state, chat, mark], outputs, **busy)
+        new_btn.click(lambda: _view("", []), None, outputs)
         thread_state.change(lambda t: t, thread_state, thread_label)
+
+        review_tab.select(on_review_refresh, None, [review_dd, review_count, review_panel])
+        review_refresh.click(on_review_refresh, None, [review_dd, review_count, review_panel])
+        review_dd.change(on_review_open, review_dd, [review_panel, review_request, review_feas, review_msg])
+        decision_out = [review_msg, review_us, review_panel, review_dd, review_comment]
+        approve_btn.click(on_review_decision("approve"), [review_dd, review_comment], decision_out)
+        edit_btn.click(on_review_decision("edit"), [review_dd, review_comment], decision_out)
+        unlock_btn.click(on_unlock, reviewer_key, [review_gate, review_area, review_dd, review_count])
+        reviewer_key.submit(on_unlock, reviewer_key, [review_gate, review_area, review_dd, review_count])
+
+        sessions_tab.select(on_refresh_sessions, None, session_dd)
+        refresh_sessions.click(on_refresh_sessions, None, session_dd)
+        resume_btn.click(on_resume, [session_dd, old_tid], outputs + [tabs], **busy)
 
         refresh_btn.click(on_refresh_models, [host, api_key, model], [model, llm_msg])
         test_btn.click(on_test, [host, api_key, model], llm_msg)
-        apply_btn.click(on_apply, [host, api_key, model], llm_status)
+        apply_btn.click(on_apply, [host, api_key, model], [llm_status, header])
+        disable_btn.click(on_disable, host, [llm_status, header])
+        cat_mode.change(lambda m: (gr.update(visible=m == "GitHub"), gr.update(visible=m != "GitHub")), cat_mode, [gh_group, local_path])
         sync_btn.click(
-            on_sync_catalog, [cat_mode, gh_repo, gh_ref, gh_subdir, gh_token, local_path], [sync_msg, catalog_md, demo_banner]
+            on_sync_catalog, [cat_mode, gh_repo, gh_ref, gh_subdir, gh_token, local_path], [sync_msg, catalog_md, header]
         )
-        disable_btn.click(on_disable, host, llm_status)
     return demo
 
 
 def launch(**kwargs):
-    """Build and launch the UI with its CSS (use this from the notebook too)."""
-    build_ui().launch(css=CSS, **kwargs)
+    """Build and launch the UI with its theme and CSS (use this from the notebook too)."""
+    kwargs.setdefault("footer_links", ["gradio", "settings"])
+    # Download buttons serve files from outputs/, which may live outside the working directory (OUTPUT_DIR).
+    kwargs.setdefault("allowed_paths", [str(config.OUTPUT_DIR)])
+    build_ui().launch(theme=THEME, css=CSS, **kwargs)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--share", action="store_true", help="create a temporary public link (Colab)")
+    parser.add_argument("--host", help="interface to bind, e.g. 0.0.0.0 in Codespaces/containers (default 127.0.0.1)")
     parser.add_argument("--port", type=int, default=7860)
     args = parser.parse_args()
-    launch(share=args.share, server_port=args.port)
+    launch(share=args.share, server_name=args.host, server_port=args.port)

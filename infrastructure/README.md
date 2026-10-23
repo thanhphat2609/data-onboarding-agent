@@ -1,0 +1,105 @@
+# Infrastructure
+
+The web UI runs in Docker. One `Dockerfile` and one `compose.yaml` cover a laptop, a VM and GitHub Codespaces, and the command is the same everywhere.
+
+```
+infrastructure/
+├── Dockerfile      # Python 3.12 slim + requirements.txt + the code; starts app.py on port 7860
+├── compose.yaml    # builds the image, publishes the port, passes settings, mounts the data folders
+├── .env.example    # settings template; copy to .env (gitignored)
+└── README.md       # this file
+```
+
+```
+ Browser                Docker host (laptop / VM / codespace)                Google Colab (GPU), optional
+┌───────────────┐      ┌───────────────────────────────────────────┐ HTTPS   ┌──────────────────────────┐
+│ 127.0.0.1:7860│─────▶│ container "app": python app.py (Gradio)   │ + key   │ cloudflared tunnel       │
+│ (or Codespaces│      │   ├─ outputs/   ◀── bind mount             ├────────▶│  └─ ollama_auth_proxy.py │
+│  PORTS tab)   │      │   ├─ catalog/   ◀── bind mount             │         │      └─ Ollama (qwen2.5) │
+└───────────────┘      │   └─ playbooks/ ◀── bind mount (read-only) │         └──────────────────────────┘
+                       └───────────────────────────────────────────┘
+```
+
+## Open the UI
+
+### 1. (Optional) Settings
+All settings are optional. Without them the agent runs rule-based, Teams messages are written to `outputs/`, and you can type the model host, API key and dbt token straight into the UI panels.
+
+```bash
+cp infrastructure/.env.example infrastructure/.env      # PowerShell: Copy-Item infrastructure/.env.example infrastructure/.env
+```
+
+| Variable | Value |
+|---|---|
+| `OLLAMA_HOST` | Tunnel URL from the Colab notebook, step 4 (`https://xxxx.trycloudflare.com`). Empty = Ollama on the host machine |
+| `OLLAMA_API_KEY` | API key printed by the same Colab cell |
+| `OLLAMA_MODEL` | e.g. `qwen2.5:7b`. Empty = rule-based |
+| `DBT_GITHUB_TOKEN` | Fine-grained token, **Contents: Read-only** on the dbt repo |
+| `TEAMS_WEBHOOK_URL` | Teams Workflows webhook. Empty = messages go to `outputs/<request_id>/teams_messages.jsonl` |
+| `REVIEWER_KEY` | Key for the 🛡 Data Team review tab (approve / request changes). Empty = open to everyone |
+| `WEB_RESEARCH` | `0` turns off web research for sources without a playbook |
+| `UI_PORT` | Host port, default `7860` |
+
+Env vars already set in your shell override `.env`, so Codespaces secrets with these names are picked up automatically.
+
+### 2. Start
+From the repo root:
+```bash
+docker compose -f infrastructure/compose.yaml up -d --build
+```
+The first build takes a few minutes. After that, open:
+
+- **Laptop:** http://127.0.0.1:7860
+- **GitHub Codespaces:** a notification *"Your application running on port 7860 is available"* appears; click **Open in Browser**. You can also open the **PORTS** tab (next to TERMINAL) and click the 🌐 icon on port 7860. The URL looks like `https://<codespace-name>-7860.app.github.dev`.
+- **VM:** from your laptop, run `ssh -L 7860:127.0.0.1:7860 user@vm`, then open http://127.0.0.1:7860.
+
+From there, everything works as in the main README: the **⚙️ Settings** tab (LLM: Fetch models → Test → Apply; dbt catalog sync), then chat in the **💬 Request** tab; the Data Team approves in the **🛡 Data Team review** tab.
+
+### 3. Day-to-day commands
+```bash
+docker compose -f infrastructure/compose.yaml ps             # running? healthy?
+docker compose -f infrastructure/compose.yaml logs -f        # follow the log
+docker compose -f infrastructure/compose.yaml up -d --build  # after changing code or requirements.txt (code is copied into the image)
+docker compose -f infrastructure/compose.yaml restart        # after editing playbooks/
+docker compose -f infrastructure/compose.yaml up -d          # after editing .env (restart does not re-read it)
+docker compose -f infrastructure/compose.yaml down           # stop; data in outputs/ and catalog/ is kept
+docker compose -f infrastructure/compose.yaml exec app python scripts/run_samples.py   # run scripts inside the container
+```
+
+## Where the data lives
+
+Everything the app writes ends up in the repo folder on the host, so it survives `down` and rebuilds and you can open it directly:
+
+| In the container | On the host | Contents |
+|---|---|---|
+| `/app/outputs` | `outputs/` | `checkpoints.db` (sessions / thread_ids), user stories, feasibility, eval reports |
+| `/app/catalog` | `catalog/` | dbt catalog synced from the UI |
+| `/app/playbooks` | `playbooks/` (read-only) | Edit on the host, then `restart` |
+
+## GitHub Codespaces notes
+
+- **Docker is already there.** The default Codespaces image includes Docker, so no extra setup is needed. Open the codespace and run the command from step 2.
+- **Secrets:** add the variables above under **GitHub → Settings → Codespaces → Secrets** and give them access to this repo, or use `infrastructure/.env`. Use `DBT_GITHUB_TOKEN`, not `GITHUB_TOKEN`: Codespaces sets `GITHUB_TOKEN` itself (it can only read this repo) and doesn't allow secrets whose names start with `GITHUB_`.
+- **Who can open the URL:** the port is **Private** by default, so only you, signed in to GitHub, can open it. Keep it that way, because the app has no login. For a team demo, right-click the port → **Port visibility → Private to Organization**. Avoid **Public**.
+- **Persistence:** `outputs/` and `catalog/` are under `/workspaces`, so they survive stopping the codespace but **are lost when the codespace is deleted**. Inactive codespaces are deleted after 30 days by default. Commit the catalog and real playbooks; copy any `outputs/` you need, since that folder is gitignored.
+- **Restarts:** after the codespace is stopped and reopened, run `docker compose -f infrastructure/compose.yaml up -d` again if the UI isn't in PORTS.
+
+## Model
+
+- **Colab-hosted:** set `OLLAMA_HOST` and `OLLAMA_API_KEY`, or paste them in the ⚙️ Settings tab. The tunnel URL changes every time the Colab cell is re-run.
+- **Ollama on the same machine:** leave `OLLAMA_HOST` empty; it defaults to `http://host.docker.internal:11434`. Inside the container, `localhost` is the container itself, not your machine.
+
+## Security
+
+The port is published on **127.0.0.1 only** because the app has no login, and the Settings tab accepts any host and API key. Don't change the binding to `0.0.0.0` on a VM. Use an SSH tunnel, or put a reverse proxy with authentication in front. Don't use `--share`, which creates a public Gradio link.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Container keeps restarting / `unhealthy` | `docker compose -f infrastructure/compose.yaml logs app` |
+| Codespaces: port 7860 not in PORTS | Check with `docker compose -f infrastructure/compose.yaml ps`. If it's running, add it by hand: PORTS → **Forward a Port** → `7860` |
+| Linux / VM: `Permission denied` writing `outputs/` or `catalog/` | The container runs as uid 1000. Run `sudo chown -R 1000:1000 outputs catalog` |
+| `Fetch models` fails | The Colab tab is closed or the tunnel URL changed. Re-run notebook step 4. For host Ollama, use `host.docker.internal`, not `localhost` |
+| dbt sync: 404 / "Not Found" | Wrong token. Set `DBT_GITHUB_TOKEN`, or paste a token in the UI field |
+| `port is already allocated` | Something else uses 7860. Set `UI_PORT=7861` in `.env` and open that port instead |

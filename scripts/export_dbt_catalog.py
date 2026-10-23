@@ -3,18 +3,17 @@
 Usage:
     python scripts/export_dbt_catalog.py --manifest path/to/target/manifest.json
     python scripts/export_dbt_catalog.py --project-dir path/to/dbt_project
-    python scripts/export_dbt_catalog.py --github owner/repo [--ref main] [--subdir dbt]   # token: env GITHUB_TOKEN
+    python scripts/export_dbt_catalog.py --github owner/repo [--ref main] [--subdir dbt]   # token: env DBT_GITHUB_TOKEN or GITHUB_TOKEN
 
 See agent/catalog_sync.py for how models and their metadata are read.
 """
 import argparse
-import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agent import catalog_sync  # noqa: E402
+from agent import catalog_sync, config  # noqa: E402
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -32,7 +31,7 @@ if __name__ == "__main__":
     elif args.project_dir:
         models, origin = catalog_sync.from_local_project(args.project_dir), f"local:{args.project_dir}"
     else:
-        models = catalog_sync.from_github(args.github, os.getenv("GITHUB_TOKEN", ""), args.ref, args.subdir)
+        models = catalog_sync.from_github(args.github, config.dbt_github_token(), args.ref, args.subdir)
         origin = f"github:{args.github}@{args.ref}/{args.subdir}"
 
     out = catalog_sync.save_catalog(models, origin, args.out)

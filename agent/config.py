@@ -40,6 +40,15 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "")
 # API key for a remote Ollama behind scripts/ollama_auth_proxy.py (e.g. hosted on Colab).
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
 
+# GitHub token for the dbt catalog sync. DBT_GITHUB_TOKEN wins: in Codespaces GITHUB_TOKEN is preset to a token
+# that can only read the codespace's own repo, and secrets there can't be named GITHUB_*.
+def dbt_github_token() -> str:
+    return os.getenv("DBT_GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN", "")
+
+# Key for the "Data Team review" tab of the web UI (approve / request changes). Empty = tab open to everyone.
+# A soft gate so requesters don't approve their own requests; the app itself has no login.
+REVIEWER_KEY = os.getenv("REVIEWER_KEY", "")
+
 # Teams Workflows webhook: leave empty to mock (messages are written to outputs/).
 TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")
 

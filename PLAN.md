@@ -144,7 +144,7 @@ notes: ""
 
 **Total:** ~3 weeks part-time.
 
-> Actual status of each item: see README.md.
+> Actual status of each item: see [docs/PHASES.md](docs/PHASES.md).
 
 ---
 
