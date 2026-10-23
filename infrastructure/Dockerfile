@@ -18,7 +18,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY --chown=app:app . .
-RUN mkdir -p outputs catalog && chown app:app outputs catalog
+RUN mkdir -p outputs && chown app:app outputs
 USER app
 
 EXPOSE 7860

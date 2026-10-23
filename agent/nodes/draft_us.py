@@ -4,7 +4,12 @@ import json
 from agent.llm import get_llm, load_prompt, safe_call
 from agent.nodes.common import output_dir, rel
 
-KIND_LABEL = {"existing_model": "Reuse existing model", "ingest": "New ingestion"}
+KIND_LABEL = {
+    "existing_model": "Reuse existing dbt model",
+    "landed": "Landed in the lake, add dbt models",
+    "new_job": "System onboarded, add an ingestion job",
+    "new_connection": "Onboard a new connection",
+}
 
 
 def current_research(state: dict) -> dict:
@@ -18,7 +23,7 @@ def research_section(research: dict) -> list[str]:
         return []
     lines = [
         "## Web research (unverified)",
-        "_For sources without a playbook the agent read public docs. Nothing here has been checked by the team "
+        "_For sources the platform can't onboard yet, the agent read public docs. Nothing here has been checked by the team "
         "and none of it was used in the feasibility result._",
         "",
     ]
@@ -38,8 +43,8 @@ def research_section(research: dict) -> list[str]:
         if failed:
             lines.append("- Could not read: " + ", ".join(f"{p['url']} ({p['error'][:80]})" for p in failed))
         lines += [f"- Note: {n}" for n in f.get("notes") or []]
-        if f.get("draft_playbook"):
-            lines.append(f"- Draft playbook: `{f['draft_playbook']}`")
+        if f.get("source_notes"):
+            lines.append(f"- Draft source notes: `{f['source_notes']}`")
         lines.append("")
     lines.append("## Questions for the Data Team")
     n = 0
@@ -52,31 +57,43 @@ def research_section(research: dict) -> list[str]:
 
 
 def _pipeline_steps(request: dict, src: dict, research: dict | None = None) -> list[str]:
-    source = src["source"]
+    """Steps across the two repos, from what already exists to what has to be built."""
     rec = src.get("recommendation")
-    grain = request.get("grain", "")
-    consumers = request.get("consumers", "")
-    if rec is None:
-        draft = (research or {}).get("draft_playbook")
-        return [
-            f"Data Team answers the questions below for `{source}` (no playbook yet) and picks an access method.",
-            f"Review the draft playbook `{draft}` and save it to `playbooks/`." if draft else f"Write `playbooks/{source}.yaml`.",
-            "Re-run the request through the agent to get a real feasibility check.",
-        ]
-    if rec["kind"] == "existing_model":
-        return [
-            f"Reuse model `{rec['name']}` (already in the catalog, data from {rec['available_from'] or 'n/a'}).",
-            f"Build a mart model/view at grain `{grain}` if the existing model has a different grain.",
-            f"Expose to: {consumers}.",
-        ]
-    connector = rec.get("connector") or "current connector"
-    return [
-        f"Ingest `{source}` via `{rec['name']}` ({connector}), schedule: {request.get('refresh_frequency')}.",
-        f"Backfill from {request['date_range']['start']}.",
-        f"Staging model `stg_{source}__*` → mart at grain `{grain}`.",
+    system, grain, consumers = src.get("system") or src["source"], request.get("grain", ""), request.get("consumers", "")
+    freq = request.get("refresh_frequency", "daily")
+    dbt_steps = [
+        f"data-onboarding-transformation: staging model `stg_{system}__<table>` (typed, one row per key per ingest day) "
+        f"and a mart at grain `{grain}`, written as Parquet to the curated zone.",
         "Add dbt tests: not_null/unique on keys, freshness matching the refresh frequency.",
         f"Expose to: {consumers}.",
     ]
+    if rec is None:
+        notes = (research or {}).get("source_notes")
+        return [
+            f"Data Team answers the questions below for `{src['source']}` and decides how to onboard it "
+            "(a new source template in data-onboarding-ingestion, or another route).",
+            f"Review the draft notes `{notes}`." if notes else "Collect the source's API/export documentation.",
+            "Re-run the request through the agent once the source can be onboarded.",
+        ]
+    if rec["kind"] == "existing_model":
+        return [
+            f"Reuse dbt model `{rec['name']}` ({rec['ref']}).",
+            f"Build a mart at grain `{grain}` on top of it if the grain differs.",
+            f"Expose to: {consumers}.",
+        ]
+    if rec["kind"] == "landed":
+        tables = ", ".join(f"`{t}`" for t in rec.get("tables", []))
+        return [f"Raw data already lands in the lake: {tables} (jobs `{rec['name']}`, schedule `{rec.get('schedule')}`)."] + dbt_steps
+    if rec["kind"] == "new_job":
+        return [
+            f"data-onboarding-ingestion: add a job `pipelines/jobs/{system}-<table>-{freq}.yaml` on connection "
+            f"`{rec['name']}` with the needed `SELECT`, scheduled {freq}.",
+        ] + dbt_steps
+    return [
+        f"data-onboarding-ingestion: onboard a connection `pipelines/connections/{system}-{rec['name']}-<env>.yaml` "
+        f"from the `{rec['name']}` source template (read-only login, secret as env:// or kv://).",
+        f"Add a job `pipelines/jobs/{system}-<table>-{freq}.yaml` on that connection.",
+    ] + dbt_steps
 
 
 def render_user_story(state: dict, title: str, description: str, extra_ac: list[str]) -> str:
@@ -90,7 +107,7 @@ def render_user_story(state: dict, title: str, description: str, extra_ac: list[
         f"**Request ID:** {state['request_id']}  ",
         f"**Teams thread:** {state.get('thread_ref', '')}  ",
         f"**Feasibility:** {feas['overall']}"
-        + ("  \n**Data already in catalog:** yes" if feas.get("data_already_available") else ""),
+        + ("  \n**Data already modelled in dbt:** yes" if feas.get("data_already_available") else ""),
         "",
         "## User Story",
         f"As **{request['consumers']}**, I need: _{request['dataset_description']}_ — "
@@ -101,19 +118,16 @@ def render_user_story(state: dict, title: str, description: str, extra_ac: list[
         description,
         "",
         "## Sources & feasibility",
-        "| Source | Proposed approach | Data available from | Covers date range | Reference |",
-        "|---|---|---|---|---|",
+        "| Source | Proposed approach | Reference |",
+        "|---|---|---|",
     ]
     for src in feas["sources"]:
         rec = src.get("recommendation")
         if rec:
-            lines.append(
-                f"| {src['source']} | {KIND_LABEL[rec['kind']]}: `{rec['name']}` | {rec['available_from'] or 'no known limit'} "
-                f"| {'✅' if rec['covers'] else '⚠️ no'} | {rec['ref']} |"
-            )
+            lines.append(f"| {src['source']} | {KIND_LABEL[rec['kind']]}: `{rec['name']}` | {rec['ref']} |")
         else:
-            note = "no playbook — see web research below" if src["source"] in research else "no playbook"
-            lines.append(f"| {src['source']} | Needs investigation | ? | ? | {note} |")
+            note = "can't be onboarded yet — see web research below" if src["source"] in research else "can't be onboarded yet"
+            lines.append(f"| {src['source']} | Needs investigation | {note} |")
 
     lines += ["", "## Proposed pipeline"]
     for src in feas["sources"]:
@@ -138,7 +152,7 @@ def render_user_story(state: dict, title: str, description: str, extra_ac: list[
         lines.append(f"- Accepted by the requester: {', '.join(accepted)}.")
     if state.get("review_comment"):
         lines += ["", "## Reviewer notes", state["review_comment"]]
-    lines += ["", "---", "_Draft generated by the agent. Date range information comes from the playbook/catalog in the \"Reference\" column._"]
+    lines += ["", "---", "_Draft generated by the agent. Facts come from data-onboarding-ingestion and data-onboarding-transformation, see the \"Reference\" column._"]
     return "\n".join(lines) + "\n"
 
 

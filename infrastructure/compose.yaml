@@ -17,7 +17,12 @@ services:
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-}
-      DBT_GITHUB_TOKEN: ${DBT_GITHUB_TOKEN:-}
+      # The two repos the agent reads (agent/repos.py); GITHUB_TOKEN must be able to read both.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      INGESTION_REPO: ${INGESTION_REPO:-thanhphat2609/data-onboarding-ingestion}
+      INGESTION_REF: ${INGESTION_REF:-main}
+      TRANSFORMATION_REPO: ${TRANSFORMATION_REPO:-thanhphat2609/data-onboarding-transformation}
+      TRANSFORMATION_REF: ${TRANSFORMATION_REF:-main}
       TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
       WEB_RESEARCH: ${WEB_RESEARCH:-1}
       REVIEWER_KEY: ${REVIEWER_KEY:-}
@@ -25,8 +30,6 @@ services:
       CHECKPOINT_DB: /app/outputs/checkpoints.db
     volumes:
       - ../outputs:/app/outputs           # checkpoints.db, user stories, feasibility, eval reports
-      - ../catalog:/app/catalog           # catalog synced from the UI survives rebuilds
-      - ../playbooks:/app/playbooks:ro    # edit playbooks on the host, then restart
     # Lets OLLAMA_HOST=http://host.docker.internal:11434 reach Ollama on the host (needed on Linux).
     extra_hosts:
       - "host.docker.internal:host-gateway"

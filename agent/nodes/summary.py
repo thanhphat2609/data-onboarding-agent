@@ -7,7 +7,7 @@ from agent.nodes.draft_us import current_research
 def _questions(research: dict) -> list[str]:
     if not research:
         return []
-    lines = ["", "**Questions for the Data Team** (sources without a playbook; web research in the User Story, unverified):"]
+    lines = ["", "**Questions for the Data Team** (sources the platform can't onboard yet; web research in the User Story, unverified):"]
     for source, f in research.items():
         lines += [f"- {source}: {q}" for q in f.get("questions") or []]
     return lines + [""]

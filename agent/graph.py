@@ -3,7 +3,7 @@
     intake ⇄ ask_user          (ask until all fields are filled / gaps are resolved)
     intake → notify → catalog_check → feasibility
     feasibility ─gap→ intake
-    feasibility → investigate_source → approval ─edit→ intake   (web research only for sources without a playbook)
+    feasibility → investigate_source → approval ─edit→ intake   (web research only for sources the platform can't onboard yet)
     approval ─approve→ draft_us → summary → END
 """
 import sqlite3

@@ -14,7 +14,7 @@ REQUIRED_FIELDS = [
 
 FIELD_QUESTIONS = {
     "dataset_description": "What data do you need, and what will it be used for?",
-    "sources": "Which source(s)? (GA4, GSC, AppsFlyer, CM, GAM, DV360, DataForSEO, other)",
+    "sources": "Which source system(s)? (already onboarded: {systems}; or a new system, e.g. \"ERP on PostgreSQL\")",
     "date_range": "What date range? (e.g. from 2025-01-01 to now)",
     "eta": "When does the data need to go live (ETA)? (YYYY-MM-DD, or e.g. \"in 2 weeks\")",
     "refresh_frequency": "Refresh frequency: daily / hourly / weekly / one-off?",
@@ -22,7 +22,6 @@ FIELD_QUESTIONS = {
     "consumers": "Who will use this data, and where? (dashboard, report…)",
 }
 
-KNOWN_SOURCES = ["ga4", "gsc", "appsflyer", "cm", "gam", "dv360", "dataforseo"]
 FREQUENCIES = ["daily", "hourly", "weekly", "one-off"]
 
 
@@ -52,7 +51,7 @@ class AgentState(TypedDict, total=False):
     feasibility: dict
     gap: list[dict]
     accepted_gaps: list[str]
-    research: dict[str, dict]  # source -> web research findings (sources without a playbook only)
+    research: dict[str, dict]  # source -> web research findings (sources the platform can't onboard yet)
     approved: bool
     review_comment: str
     outputs: dict[str, Any]

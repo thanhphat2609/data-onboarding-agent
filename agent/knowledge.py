@@ -1,12 +1,8 @@
-"""Knowledge lookup tools: source playbooks (YAML) and the dbt catalog (JSON)."""
-import json
+"""Knowledge lookups over the two platform repositories (agent/repos.py): ingestion facts per system
+and a search over the dbt models of the transformation repo."""
 import re
-from functools import lru_cache
-from pathlib import Path
 
-import yaml
-
-from agent import config
+from agent import repos
 from agent.extraction import norm
 
 # Bilingual (Vietnamese + English) stopwords, since requests can be written in either language.
@@ -16,58 +12,49 @@ STOPWORDS = {
 }
 
 
-@lru_cache(maxsize=None)
-def _load_playbook_file(path: str, mtime: float) -> dict:
-    return yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-
-
-def lookup_playbook(source: str) -> dict | None:
-    """Return the source playbook (with `_file` so outputs can cite it), or None if missing."""
-    # "tiktok ads" → tiktok ads.yaml or tiktok_ads.yaml (the name research drafts use)
-    names = dict.fromkeys([norm(source), re.sub(r"[^\w]+", "_", norm(source)).strip("_")])
-    path = next((p for n in names if (p := config.PLAYBOOK_DIR / f"{n}.yaml").exists()), None)
-    if path is None:
-        return None
-    data = dict(_load_playbook_file(str(path), path.stat().st_mtime))
-    data["_file"] = path.relative_to(config.ROOT).as_posix() if path.is_relative_to(config.ROOT) else str(path)
-    return data
-
-
-def list_playbooks() -> list[str]:
-    return sorted(p.stem for p in config.PLAYBOOK_DIR.glob("*.yaml"))
-
-
-def load_catalog() -> list[dict]:
-    if not config.CATALOG_PATH.exists():
-        return []
-    data = json.loads(config.CATALOG_PATH.read_text(encoding="utf-8"))
-    return data["models"] if isinstance(data, dict) else data
-
-
 def tokenize(text: str) -> set[str]:
     return {t for t in re.split(r"[^\w]+", norm(text)) if len(t) > 1 and t not in STOPWORDS}
 
 
-def search_catalog(query: str, source: str | None = None, top_k: int = 5) -> list[dict]:
-    """Find dbt models related to the query. Score = share of query tokens found in the model."""
-    q = tokenize(query)
+def singular(token: str) -> str:
+    return token[:-1] if len(token) > 3 and token.endswith("s") and not token.endswith("ss") else token
+
+
+def lookup_source(system: str) -> dict:
+    """What the ingestion repo knows about a source system: connections, landed tables, dbt models."""
+    kb = repos.get()
+    name, stype = repos.parse_source(system, kb)
+    return {
+        "system": name,
+        "source_type": stype,
+        "type_supported": bool(stype and stype in kb.templates),
+        "connections": kb.connections_for(name),
+        "landed_tables": kb.jobs_for(name),
+        "dbt_models": [m["name"] for m in kb.models_for(name)],
+    }
+
+
+def search_models(query: str, system: str | None = None, top_k: int = 5) -> list[dict]:
+    """dbt models related to the query. Score = share of query tokens found in the model."""
+    q = {singular(t) for t in tokenize(query)}
     if not q:
         return []
     results = []
-    for model in load_catalog():
-        if source and model.get("source") != source:
+    for model in repos.get().models:
+        if system and model.get("system") != system:
             continue
-        haystack = tokenize(
-            " ".join(
-                [
+        haystack = {
+            singular(t)
+            for t in tokenize(
+                " ".join([
                     model.get("name", "").replace("_", " "),
                     model.get("description", ""),
                     model.get("grain", ""),
                     " ".join(model.get("tags", [])),
                     " ".join(model.get("columns", [])).replace("_", " "),
-                ]
+                ])
             )
-        )
+        }
         score = len(q & haystack) / len(q)
         if score > 0:
             results.append({**model, "score": round(score, 3)})
@@ -75,32 +62,32 @@ def search_catalog(query: str, source: str | None = None, top_k: int = 5) -> lis
     return results[:top_k]
 
 
-# Tool schemas for testing Ollama tool calling (Phase 0 / notebook)
+# Tool schemas for testing Ollama tool calling (notebook)
 TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
-            "name": "lookup_playbook",
-            "description": "Get the playbook of a data source: access methods, earliest available date, connector, owner.",
+            "name": "lookup_source",
+            "description": "What the platform knows about a source system: is it onboarded, which tables already land in the lake, which dbt models exist.",
             "parameters": {
                 "type": "object",
-                "properties": {"source": {"type": "string", "description": "Lowercase source code, e.g. ga4, appsflyer"}},
-                "required": ["source"],
+                "properties": {"system": {"type": "string", "description": "Source system, e.g. crm, or 'erp on postgresql'"}},
+                "required": ["system"],
             },
         },
     },
     {
         "type": "function",
         "function": {
-            "name": "search_catalog",
-            "description": "Search the dbt catalog for existing models matching a description of the needed data.",
+            "name": "search_models",
+            "description": "Search the dbt models of the transformation repo for data matching a description.",
             "parameters": {
                 "type": "object",
-                "properties": {"query": {"type": "string"}, "source": {"type": "string"}},
+                "properties": {"query": {"type": "string"}, "system": {"type": "string"}},
                 "required": ["query"],
             },
         },
     },
 ]
 
-TOOLS = {"lookup_playbook": lookup_playbook, "search_catalog": search_catalog}
+TOOLS = {"lookup_source": lookup_source, "search_models": search_models}

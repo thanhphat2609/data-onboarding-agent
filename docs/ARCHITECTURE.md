@@ -1,6 +1,6 @@
 # Architecture
 
-The Data Onboarding Agent is a **LangGraph state machine** with a **Gradio web UI** in front of it. Requesters describe the data they need in a chat. The agent fills a structured request, checks it against the team's knowledge (source playbooks and the dbt catalog), and hands it to the **Data Team** for approval. After approval it writes a User Story and posts a summary to Teams.
+The Data Onboarding Agent is a **LangGraph state machine** with a **Gradio web UI** in front of it. Requesters describe the data they need in a chat. The agent fills a structured request, checks it against the code of the two platform repositories, [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion) and [data-onboarding-transformation](https://github.com/thanhphat2609/data-onboarding-transformation), to see what already exists and what has to be built, and hands it to the **Data Team** for approval. After approval it writes a User Story and posts a summary to Teams.
 
 ## System context
 
@@ -14,31 +14,31 @@ flowchart LR
         G[LangGraph graph<br/>agent/graph.py + agent/nodes/]
         UI --> RUN --> G
     end
-    G -- read --> K[(Playbooks YAML<br/>dbt catalog JSON)]
+    G -- read --> ING[(data-onboarding-ingestion<br/>templates · connections · jobs)]
+    G -- read --> TRF[(data-onboarding-transformation<br/>dbt models)]
     G -- checkpoints --> DB[(SQLite<br/>checkpoints.db)]
     G -- files --> OUT[(outputs/&lt;request_id&gt;/)]
     G -. optional .-> LLM[Ollama LLM<br/>local or Colab tunnel]
-    G -. optional .-> WEB[Public docs on the web<br/>sources without a playbook]
+    G -. optional .-> WEB[Public docs on the web<br/>sources the platform can't onboard yet]
     G -- webhook or mock file --> T[Teams channel]
-    DBT[dbt repo on GitHub / local] -- catalog sync --> K
 ```
 
 ## Components
 
 | Component | Files | Role |
 |---|---|---|
-| Web UI | [app.py](../app.py) | Gradio app. Shows the chat, step tracker, request card and results. Holds the Data Team review queue. Also has settings for the LLM and the dbt catalog sync |
+| Web UI | [app.py](../app.py) | Gradio app. Shows the chat, step tracker, request card and results. Holds the Data Team review queue. Also has settings for the LLM and the repositories the agent reads |
 | Runner | [agent/runner.py](../agent/runner.py) | Thin API over the graph: `new_request`, `stream`, `reply`, `current_event`, `state`, `threads`. Used by the UI and the scripts |
 | Graph | [agent/graph.py](../agent/graph.py) | Wires the nodes and routing functions; compiles with the SQLite checkpointer |
 | Nodes | [agent/nodes/](../agent/nodes/) | One file per step (see [The graph](#the-graph)) |
 | State | [agent/state.py](../agent/state.py) | `AgentState` TypedDict, the 7 required request fields, the questions for each field |
 | Extraction | [agent/extraction.py](../agent/extraction.py) | Rule-based field extraction (English + Vietnamese keywords) and validation; LLM extraction when a model is configured |
-| Knowledge | [agent/knowledge.py](../agent/knowledge.py) | `lookup_playbook(source)`, `search_catalog(query)` (token-overlap score) |
-| Catalog sync | [agent/catalog_sync.py](../agent/catalog_sync.py), [scripts/export_dbt_catalog.py](../scripts/export_dbt_catalog.py) | Build `catalog/dbt_models.json` from a GitHub dbt repo, a local dbt project or a `manifest.json` |
-| Web research | [agent/research.py](../agent/research.py) | For sources without a playbook: find and read public docs, draft a playbook, list questions for the Data Team |
+| Repositories | [agent/repos.py](../agent/repos.py), [agent/github.py](../agent/github.py), [agent/dbt_project.py](../agent/dbt_project.py) | Read the two repos (local checkout or GitHub) into one cached `Knowledge`: source templates, connections, jobs, dbt models |
+| Knowledge | [agent/knowledge.py](../agent/knowledge.py) | `lookup_source(system)`, `search_models(query)` (token-overlap score) over the repos |
+| Web research | [agent/research.py](../agent/research.py) | For sources the platform can't onboard yet: find and read public docs, draft source notes, list questions for the Data Team |
 | LLM client | [agent/llm.py](../agent/llm.py), [agent/prompts/](../agent/prompts/) | Optional Ollama client (API key support for the Colab proxy); prompts as Markdown files |
 | Teams | [agent/integrations/teams.py](../agent/integrations/teams.py) | Adaptive Card to a Workflows webhook; without a URL (or on failure) writes `teams_messages.jsonl` |
-| Config | [agent/config.py](../agent/config.py) | Paths and env vars; falls back to `demo/` knowledge while no real data exists |
+| Config | [agent/config.py](../agent/config.py) | Paths and env vars, including which repos and branches to read |
 | Infrastructure | [infrastructure/](../infrastructure/) | Dockerfile + compose for laptop, VM and Codespaces |
 
 ## The graph
@@ -64,9 +64,9 @@ flowchart TD
 | `intake` | [intake.py](../agent/nodes/intake.py) | Extracts fields from new user messages, validates them (dates, ETA after today, refresh frequency) and decides what to ask next: missing fields (max 3 per turn) or a gap to resolve | `request`, `missing_fields`, `errors`, `gap`, `accepted_gaps`, `pending_question` |
 | `ask_user` | [intake.py](../agent/nodes/intake.py) | `interrupt()`: pauses the graph until the requester answers | `messages` |
 | `notify` | [notify.py](../agent/nodes/notify.py) | Once per request: writes `request.json`, posts "New data request" to Teams | `thread_ref` |
-| `catalog_check` | [catalog_check.py](../agent/nodes/catalog_check.py) | Searches the dbt catalog per source for models that already hold the data | `existing_models` |
-| `feasibility` | [feasibility.py](../agent/nodes/feasibility.py) | Per source: playbook lookup, compares the requested start date with each option's `available_from`, prefers existing models, flags tight ETAs and unreviewed playbooks | `feasibility`, `gap` |
-| `investigate_source` | [investigate.py](../agent/nodes/investigate.py) | Only for sources without a playbook: web research and a draft playbook (advisory) | `research` |
+| `catalog_check` | [catalog_check.py](../agent/nodes/catalog_check.py) | Searches the dbt models of the transformation repo per source system | `existing_models` |
+| `feasibility` | [feasibility.py](../agent/nodes/feasibility.py) | Per source and table: existing dbt model → landed by an ingestion job → system onboarded (new job) → supported source type (new connection) → otherwise a gap. Flags tight ETAs and snapshot history | `feasibility`, `gap` |
+| `investigate_source` | [investigate.py](../agent/nodes/investigate.py) | Only for sources the platform can't onboard yet: web research and draft source notes (advisory) | `research` |
 | `approval` | [approval.py](../agent/nodes/approval.py) | `interrupt()`: pauses until the Data Team approves or requests changes | `approved`, `review_comment` |
 | `draft_us` | [draft_us.py](../agent/nodes/draft_us.py) | User Story from a fixed template (LLM only writes title/description); writes `feasibility.json`, `user_story.md` | `outputs` |
 | `summary` | [summary.py](../agent/nodes/summary.py) | Writes `summary.md`, posts "Request approved — User Story ready" to Teams | `outputs` |
@@ -91,8 +91,8 @@ The graph stops in exactly two places, both with LangGraph's `interrupt()`:
 | `request` | The 7 required fields: `dataset_description`, `sources`, `date_range`, `eta`, `refresh_frequency`, `grain`, `consumers` |
 | `missing_fields`, `errors` | What is still missing or invalid |
 | `gap`, `accepted_gaps` | Open feasibility gaps (`date_range`, `unknown_source`) and the ones the requester accepted |
-| `existing_models`, `feasibility` | Catalog matches and the per-source assessment with recommendation and risks |
-| `research` | Web research findings per source without a playbook |
+| `existing_models`, `feasibility` | dbt model matches and the per-source assessment with recommendation and risks |
+| `research` | Web research findings per source the platform can't onboard yet |
 | `approved`, `review_comment` | The Data Team's decision |
 | `outputs` | Paths of the generated files and the User Story title |
 
@@ -101,28 +101,32 @@ One chat session = one LangGraph `thread_id`. Every step is checkpointed in SQLi
 ## Design rules
 
 1. **Decisions live in code; the LLM only helps with language.** Routing, validation and feasibility are deterministic Python. The LLM (if configured) extracts free-text fields, rephrases questions and writes the User Story title and description. If it is missing or fails, the rule-based path takes over (`safe_call`).
-2. **Never guess source facts.** Date availability, lookback limits and lead times come only from playbooks and the catalog. Every recommendation cites its file.
-3. **Web research is advisory.** Findings for unknown sources go into the User Story and the questions for the Data Team. They never change the feasibility result: the source stays *Needs investigation* until a reviewed playbook exists.
+2. **Never guess platform facts.** What is onboarded, landing or modelled comes only from the two repos; every recommendation cites the file it came from.
+3. **Web research is advisory.** Findings for unknown sources go into the User Story and the questions for the Data Team. They never change the feasibility result: the source stays *Needs investigation* until the ingestion repo can onboard it.
 4. **A human approves.** Nothing is drafted until the Data Team approves. A requested change sends the request back through intake and feasibility.
-5. **Demo data is labelled.** While `playbooks/` or `catalog/` is empty the agent falls back to `demo/` and says so in the header pill and as a risk on every request.
+5. **No sample data.** The agent only knows what the two repos contain. If a repo can't be read, the header pill turns red and every feasibility result carries the error as a risk.
 6. **External calls must not break the flow.** A failing Teams webhook or web page is logged to a file and the flow continues.
 
 ## Knowledge
 
-| Source | Location | Used by |
+| Repo | Files | Used for |
 |---|---|---|
-| Playbooks, one YAML per source | `playbooks/` (fallback `demo/playbooks/`) | `feasibility`: access methods, `available_from`, `max_lookback_days`, `typical_lead_time_days`, `review_status` |
-| dbt catalog | `catalog/dbt_models.json` (fallback `demo/catalog/`) | `catalog_check`, `feasibility`: existing models and their `data_from` |
-| Doc links | `doc_links.yaml` | `investigate_source`: official docs to read first |
+| data-onboarding-ingestion | `code/templates/sources/*.yaml` | Source types that can be onboarded (`new_connection`) |
+| | `pipelines/connections/*.yaml` | Systems already onboarded (`new_job`); system = system of its jobs, else the first part of the name (`crm-sqlserver-nonprod` → `crm`) |
+| | `pipelines/jobs/*.yaml` | Tables landing in the lake, from `sink.params.path` = `<system>/<schema>/<table>` (`landed`) |
+| data-onboarding-transformation | `models/**/*.yml`, or `target/manifest.json` if committed | dbt models (`existing_model`); system from `meta.source`, `stg_<system>__…` or the folder `models/<layer>/<system>/` |
+| this repo | `doc_links.yaml` | `investigate_source`: official docs to read first |
 
-The catalog is built by the **Settings → dbt catalog** panel or `scripts/export_dbt_catalog.py` from `target/manifest.json` if present, else from the schema `.yml` files.
+Each repo is read from a local checkout (`INGESTION_PATH`, `TRANSFORMATION_PATH`) or from GitHub (`*_REPO`, `*_REF`, `GITHUB_TOKEN`), once per process; **⚙️ Settings → Reload repositories** reads them again.
+
+Feasibility has no history dates to compare: ingestion keeps one snapshot per day from its first run (ingestion ADR-0004), so the agent adds a history risk instead of a date-range gap. Lead times per kind of work are rough team estimates in `LEAD_TIME_DAYS` ([feasibility.py](../agent/nodes/feasibility.py)).
 
 ## Storage
 
 | What | Where | Notes |
 |---|---|---|
 | Sessions (checkpoints) | `CHECKPOINT_DB`, default `./checkpoints.db`; `outputs/checkpoints.db` in Docker | SQLite. PLAN: Postgres after the prototype |
-| Per-request files | `outputs/<request_id>/` | `request.json`, `feasibility.json`, `user_story.md`, `summary.md`, `teams_messages.jsonl`, `playbook_draft_<source>.yaml` |
+| Per-request files | `outputs/<request_id>/` | `request.json`, `feasibility.json`, `user_story.md`, `summary.md`, `teams_messages.jsonl`, `source_notes_<source>.yaml` |
 | Evaluation runs | `outputs/eval/<timestamp>/` | `report.md`, `mistakes.csv` from `scripts/run_samples.py` |
 
 ## Web UI
@@ -134,7 +138,7 @@ The UI keeps no state of its own beyond the current `thread_id`: every panel is 
 | 💬 Request | Requester | Chat with example prompts. A step tracker (Describe → Details → Feasibility → Review → User Story), a live "Your request" card, a read-only "Waiting for Data Team review" panel, and the finished User Story with downloads |
 | 🗂 Sessions | Anyone | Reopen a recent session (from the checkpointer) or one pasted by `thread_id` |
 | 🛡 Data Team review | Data Team | Queue of requests waiting for approval; request card + feasibility; **Approve** / **Request changes**. Behind `REVIEWER_KEY` if set |
-| ⚙️ Settings | Admin | LLM host/model/API key at runtime; dbt catalog sync |
+| ⚙️ Settings | Admin | LLM host/model/API key at runtime; what was read from the two repos, reload |
 | 🔧 Debug | Developer | Raw state JSON |
 
 While a request waits for review, the Request tab polls every 5 seconds (`gr.Timer`). It compares a fingerprint of the thread (message count + event type) and re-renders when the Data Team's decision lands.
@@ -156,7 +160,7 @@ The Colab-hosted model sits behind [scripts/ollama_auth_proxy.py](../scripts/oll
 
 | To… | Change |
 |---|---|
-| Support a new source | Add `playbooks/<source>.yaml` (or promote a `playbook_draft_<source>.yaml` after review) |
+| Support a new source | In data-onboarding-ingestion: a source template (new type), a connection (new system) or a job (new table); the agent picks it up on reload |
 | Add a required field | `REQUIRED_FIELDS` / `FIELD_QUESTIONS` in `state.py`, extraction + validation in `extraction.py`, `FIELD_NAMES` in `app.py`, the User Story template |
 | Add a step | New node in `agent/nodes/`, wire it in `graph.py`, add it to `NODE_STATUS` / `NODE_STEP` in `app.py` |
 | Swap the checkpointer | `get_checkpointer` in `graph.py` (e.g. Postgres); `AgentRunner.threads` reads the SQLite table directly |

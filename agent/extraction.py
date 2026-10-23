@@ -4,7 +4,8 @@ import re
 import unicodedata
 from datetime import date, datetime, timedelta
 
-from agent.state import FREQUENCIES, KNOWN_SOURCES, REQUIRED_FIELDS
+from agent import repos
+from agent.state import FREQUENCIES, REQUIRED_FIELDS
 
 DATE_RE = r"\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}/\d{4}"
 # Keywords are bilingual (Vietnamese + English) so users can answer in either language.
@@ -13,16 +14,6 @@ YES_WORDS = [
     "ok", "oke", "okay", "yes", "yep", "sure", "agree", "accept", "approve", "go ahead",
     "đồng ý", "chấp nhận", "được", "duyệt", "đúng",
 ]
-
-SOURCE_ALIASES = {
-    "ga4": ["ga4", "google analytics", "analytics 4"],
-    "gsc": ["gsc", "search console"],
-    "appsflyer": ["appsflyer", "apps flyer", "af"],
-    "cm": ["cm", "cm360", "campaign manager"],
-    "gam": ["gam", "ad manager", "dfp"],
-    "dv360": ["dv360", "display & video", "display and video"],
-    "dataforseo": ["dataforseo", "data for seo"],
-}
 
 FREQ_ALIASES = {
     "hourly": ["hourly", "every hour", "hằng giờ", "hàng giờ", "mỗi giờ", "theo giờ"],
@@ -127,8 +118,8 @@ def _contains_word(text: str, word: str) -> bool:
 
 
 def find_sources(text: str) -> list[str]:
-    t = norm(text)
-    return [src for src, aliases in SOURCE_ALIASES.items() if any(_contains_word(t, a) for a in aliases)]
+    """Source systems known to the ingestion repo (e.g. crm) mentioned in the text."""
+    return repos.find_systems(norm(text))
 
 
 def find_frequency(text: str) -> str | None:
@@ -319,6 +310,3 @@ def is_yes(text: str) -> bool:
     t = norm(text)
     return any(_contains_word(t, w) for w in YES_WORDS) and not re.search(r"\b(không|ko|no|not)\b", t)
 
-
-def unknown_sources(sources: list[str]) -> list[str]:
-    return [s for s in sources if s not in KNOWN_SOURCES]

@@ -9,7 +9,7 @@ Tabs:
   and the finished User Story with download buttons. One chat session = one thread_id.
 - Sessions: reopen a recent session (e.g. after a Colab disconnect) from the list or by thread_id.
 - Settings: switch the Ollama host/model/API key at runtime (empty model = rule-based), e.g. a model hosted on
-  Colab behind scripts/ollama_auth_proxy.py; sync the dbt catalog from a GitHub repo (token) or a local dbt project.
+  Colab behind scripts/ollama_auth_proxy.py; see what was read from the ingestion and transformation repos, and reload them.
 - Debug: raw agent state.
 """
 import argparse
@@ -23,7 +23,7 @@ from pathlib import Path
 import gradio as gr
 from langgraph.types import Command
 
-from agent import catalog_sync, config, llm
+from agent import config, llm, repos
 from agent.runner import AgentRunner
 from agent.state import REQUIRED_FIELDS
 
@@ -49,18 +49,21 @@ def _pill(text: str, tone: str = "neutral") -> str:
 def _header_html() -> str:
     model = llm.get_llm()
     model_pill = _pill(f"● {model.model}", "green") if model else _pill("○ Rule-based (no LLM)")
-    demo = config.demo_parts()
-    knowledge = _pill(f"DEMO {' + '.join(demo)}", "amber") if demo else _pill("Real playbooks + catalog", "green")
+    kb = repos.get()
+    if kb.errors:
+        knowledge = _pill("Repos not readable, see Settings", "red")
+    else:
+        knowledge = _pill(f"{len(kb.jobs)} ingestion jobs · {len(kb.models)} dbt models", "green")
     return f"""<div class="hero">
   <div class="brand">
     <div class="logo">◆</div>
     <div>
       <h1>Data Onboarding Agent</h1>
-      <p>Describe the data you need. The agent asks for what's missing, checks feasibility against the
-      playbooks and the dbt catalog, and drafts a User Story for the Data Team.</p>
+      <p>Describe the data you need. The agent asks for what's missing, checks the ingestion and transformation
+      repositories to see what already exists and what has to be built, and drafts a User Story for the Data Team.</p>
     </div>
   </div>
-  <div class="hero-pills"><span class="pill-label">Model</span>{model_pill}<span class="pill-label">Knowledge</span>{knowledge}</div>
+  <div class="hero-pills"><span class="pill-label">Model</span>{model_pill}<span class="pill-label">Repos</span>{knowledge}</div>
 </div>"""
 
 
@@ -161,18 +164,25 @@ def _research_html(f: dict) -> str:
     return "".join(parts)
 
 
+KIND_PILL = {
+    "existing_model": ("Existing dbt model", "green"),
+    "landed": ("Landed, needs dbt model", "blue"),
+    "new_job": ("New ingestion job", "amber"),
+    "new_connection": ("New connection", "amber"),
+}
+
+
 def _source_html(src: dict, research: dict | None) -> str:
     name = f'<b>{_esc(src["source"])}</b>'
     rec = src.get("recommendation")
     if not rec:
-        body = _pill("Needs investigation", "red") + ' <span class="muted">no playbook for this source yet</span>'
+        body = _pill("Needs investigation", "red") + " <span class=\"muted\">the platform can't onboard this source yet</span>"
         return f"<li>{name} {body}{_research_html(research) if research else ''}</li>"
-    if rec["kind"] == "existing_model":
-        what = _pill("Existing model", "green") + f" <code>{_esc(rec['name'])}</code>"
-    else:
-        what = _pill("New ingestion", "blue") + f" via <code>{_esc(rec['name'])}</code>"
-    meta = f'data from {_esc(rec.get("available_from") or "n/a")} · per <code>{_esc(rec["ref"])}</code>'
-    return f'<li>{name} {what}<div class="meta">{meta}</div></li>'
+    label, tone = KIND_PILL[rec["kind"]]
+    meta = f'per <code>{_esc(rec["ref"])}</code>'
+    if rec.get("tables"):
+        meta = "landing: " + ", ".join(f"<code>{_esc(t)}</code>" for t in rec["tables"]) + " · " + meta
+    return f'<li>{name} {_pill(label, tone)} <code>{_esc(rec["name"])}</code><div class="meta">{meta}</div></li>'
 
 
 def _approval_html(ev: dict, title: str, note: str = "") -> str:
@@ -183,7 +193,7 @@ def _approval_html(ev: dict, title: str, note: str = "") -> str:
     if note:
         parts.append(f'<div class="meta note">{_esc(note)}</div>')
     if feas.get("data_already_available"):
-        parts.append('<div class="callout">✅ This data already exists in the dbt catalog, so no new ingestion is needed.</div>')
+        parts.append('<div class="callout">✅ This data already exists as a dbt model, so nothing new has to be ingested or built.</div>')
     parts.append('<div class="section-label">Sources</div><ul class="sources">')
     parts += [_source_html(s, research.get(s["source"])) for s in feas["sources"]]
     parts.append("</ul>")
@@ -205,16 +215,16 @@ Not sure how to start? Try one of these:"""
 
 EXAMPLES = [
     {
-        "display_text": "📊 GA4 sessions by campaign for a dashboard",
-        "text": "The marketing team needs GA4 sessions, users and conversions by day and campaign for a channel performance dashboard.",
+        "display_text": "📇 Current CRM customers for a dashboard",
+        "text": "The sales team needs the current list of CRM customers with their segment for a weekly dashboard.",
     },
     {
-        "display_text": "📱 AppsFlyer installs to compute CPI",
-        "text": "We need installs by media source and campaign from AppsFlyer since 2023-01-01 to compute CPI.",
+        "display_text": "🏷️ CRM segments (not ingested yet)",
+        "text": "We need the CRM segments table (segment id and name) for the sales report.",
     },
     {
-        "display_text": "🎵 TikTok Ads spend (source without a playbook)",
-        "text": "dataset: TikTok Ads spend and impressions by campaign\nsource: tiktok ads\ndate range: 2026-01-01 to now",
+        "display_text": "🗄️ HR employees on SQL Server (new system)",
+        "text": "dataset: HR employees with department and hire date\nsource: HR on SQL Server",
     },
 ]
 
@@ -230,9 +240,9 @@ PLACEHOLDERS = {
 NODE_STATUS = {
     "intake": "Reading your message…",
     "notify": "Notifying the Data Team…",
-    "catalog_check": "Searching the dbt catalog…",
+    "catalog_check": "Searching the dbt models…",
     "feasibility": "Checking feasibility…",
-    "investigate_source": "Reading the web docs of sources without a playbook…",
+    "investigate_source": "Reading the web docs of sources the platform can't onboard yet…",
     "draft_us": "Drafting the User Story…",
     "summary": "Sending the summary…",
 }
@@ -511,35 +521,25 @@ def on_disable(host: str):
     return f"**In use:** {llm.status()}", _header_html()
 
 
-# ---------- dbt catalog ----------
+# ---------- repositories ----------
 
-def _catalog_md() -> str:
-    try:
-        data = json.loads(config.CATALOG_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return "No catalog yet."
-    origin = data.get("origin") or ("DEMO" if "catalog" in config.demo_parts() else "file")
-    return f"**Current catalog:** {len(data.get('models', []))} models · from `{origin}` · {data.get('generated_at', '')}"
+def _repos_md() -> str:
+    kb = repos.get()
+    lines = [
+        f"**data-onboarding-ingestion**: `{kb.origin.get('ingestion', 'not read')}`  ",
+        f"{len(kb.templates)} source template(s) ({', '.join(kb.templates) or 'none'}), "
+        f"{len(kb.connections)} connection(s), {len(kb.jobs)} job(s). Systems: {', '.join(kb.systems()) or 'none'}.",
+        "",
+        f"**data-onboarding-transformation**: `{kb.origin.get('transformation', 'not read')}`  ",
+        f"{len(kb.models)} dbt model(s): {', '.join(m['name'] for m in kb.models) or 'none'}.",
+    ]
+    lines += [f"\n❌ {e}" for e in kb.errors]
+    return "\n".join(lines)
 
 
-def on_sync_catalog(mode: str, repo: str, ref: str, subdir: str, token: str, local_path: str):
-    try:
-        if mode == "GitHub":
-            if not repo.strip():
-                return "Enter the repo as `owner/name`.", gr.update(), gr.update()
-            # Token from the UI field, else from DBT_GITHUB_TOKEN / GITHUB_TOKEN. Never written to disk.
-            models = catalog_sync.from_github(repo, token.strip() or config.dbt_github_token(), ref.strip() or "main", subdir)
-            origin = f"github:{repo.strip()}@{ref.strip() or 'main'}/{subdir.strip()}"
-        elif local_path.strip().endswith(".json"):
-            models, origin = catalog_sync.from_manifest_file(local_path.strip()), f"manifest:{local_path.strip()}"
-        else:
-            models, origin = catalog_sync.from_local_project(local_path.strip()), f"local:{local_path.strip()}"
-    except Exception as exc:  # noqa: BLE001
-        return f"❌ {exc}", gr.update(), gr.update()
-    if not models:
-        return "⚠️ No models found — the current catalog is kept.", gr.update(), gr.update()
-    catalog_sync.save_catalog(models, origin)
-    return f"✅ Synced {len(models)} models.", _catalog_md(), _header_html()
+def on_reload_repos():
+    repos.reload()
+    return _repos_md(), _header_html()
 
 
 # ---------- layout ----------
@@ -740,18 +740,13 @@ def build_ui() -> gr.Blocks:
                             disable_btn = gr.Button("Disable LLM")
                         llm_msg = gr.Markdown()
                     with gr.Column():
-                        gr.Markdown("### dbt catalog\nThe agent recommends existing dbt models before any new ingestion.")
-                        catalog_md = gr.Markdown(_catalog_md())
-                        cat_mode = gr.Radio(["GitHub", "Local"], value="GitHub", label="Source")
-                        with gr.Group() as gh_group:
-                            gh_repo = gr.Textbox(label="Repo", placeholder="owner/dbt-repo")
-                            with gr.Row():
-                                gh_ref = gr.Textbox(label="Branch", value="main")
-                                gh_subdir = gr.Textbox(label="dbt project folder in the repo", placeholder="(empty if at the root)")
-                            gh_token = gr.Textbox(label="GitHub token", type="password", placeholder="empty = use the DBT_GITHUB_TOKEN / GITHUB_TOKEN env var")
-                        local_path = gr.Textbox(label="dbt project folder or manifest.json file", visible=False)
-                        sync_btn = gr.Button("Sync catalog", variant="primary")
-                        sync_msg = gr.Markdown()
+                        gr.Markdown(
+                            "### Repositories\nThe agent reads the code of these repos to see what is already "
+                            "ingested and modelled. Set `INGESTION_PATH` / `TRANSFORMATION_PATH` for local checkouts; "
+                            "otherwise they are read from GitHub with `GITHUB_TOKEN`."
+                        )
+                        repos_md = gr.Markdown(_repos_md())
+                        reload_btn = gr.Button("↻ Reload repositories", variant="primary")
 
             with gr.Tab("🔧 Debug", id="debug"):
                 gr.Markdown("Raw agent state of the current session.")
@@ -788,10 +783,7 @@ def build_ui() -> gr.Blocks:
         test_btn.click(on_test, [host, api_key, model], llm_msg)
         apply_btn.click(on_apply, [host, api_key, model], [llm_status, header])
         disable_btn.click(on_disable, host, [llm_status, header])
-        cat_mode.change(lambda m: (gr.update(visible=m == "GitHub"), gr.update(visible=m != "GitHub")), cat_mode, [gh_group, local_path])
-        sync_btn.click(
-            on_sync_catalog, [cat_mode, gh_repo, gh_ref, gh_subdir, gh_token, local_path], [sync_msg, catalog_md, header]
-        )
+        reload_btn.click(on_reload_repos, None, [repos_md, header])
     return demo
 
 

@@ -1,5 +1,7 @@
 # Data Onboarding Agent – Prototype Plan
 
+> **Note (2026-10-23):** the YAML playbooks and the exported dbt catalog in this plan were replaced: the agent now reads the code of [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion) and [data-onboarding-transformation](https://github.com/thanhphat2609/data-onboarding-transformation). Current design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); status: [docs/PHASES.md](docs/PHASES.md).
+
 ## Overview
 
 **Repo:** `data-onboarding-agent`

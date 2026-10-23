@@ -1,14 +1,19 @@
 """Run sample requests (scripted conversations) through the agent and compare with expected results.
 
 Usage:
-    python scripts/run_samples.py                     # default: demo/sample_requests
-    python scripts/run_samples.py sample_requests
-    python scripts/run_samples.py sample_requests --web   # also run web research for sources without a playbook
+    python scripts/run_samples.py                         # default: tests/scenarios
+    python scripts/run_samples.py <folder>                # e.g. real past requests
+    python scripts/run_samples.py <folder> --web          # also run web research for sources the platform can't onboard
+
+The agent's knowledge comes from the ingestion and transformation repos (agent/repos.py): set
+INGESTION_PATH / TRANSFORMATION_PATH to local checkouts, or GITHUB_TOKEN to read them from GitHub.
+The scenarios in tests/scenarios expect what those repos contain today (system crm, job crm-customers-daily,
+dbt model crm_customers_current, source template sqlserver).
 
 Samples with a `team_handling` block (how the Data Team actually handled the request) are also
 compared with the agent's result. Every run writes outputs/eval/<timestamp>/report.md and
 mistakes.csv (one row per difference, with an empty column for the reviewer's notes).
-Files starting with `_` (e.g. `_template.yaml`) are skipped.
+Files starting with `_` are skipped.
 """
 import csv
 import sys
@@ -181,4 +186,4 @@ if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if a != "--web"]
     # Web research is off by default so runs are repeatable and offline; --web turns it on.
     config.WEB_RESEARCH = "--web" in sys.argv
-    sys.exit(main(Path(args[0]) if args else ROOT / "demo" / "sample_requests"))
+    sys.exit(main(Path(args[0]) if args else ROOT / "tests" / "scenarios"))

@@ -3,7 +3,7 @@ import re
 
 from langgraph.types import interrupt
 
-from agent import config
+from agent import config, repos
 from agent.extraction import DATE_RE, is_yes, llm_extract, missing_fields, rule_extract, validate
 from agent.llm import get_llm, load_prompt, safe_call
 from agent.nodes.common import get_today
@@ -62,13 +62,19 @@ def gap_question(gaps: list[dict], unclear: bool) -> str:
         options.append(f"start the date range from {max(starts)}")
     if any(g["type"] == "unknown_source" for g in gaps):
         options.append(
-            "continue without a playbook for that source — the agent will look up its public docs on the web, "
-            "but those findings are unverified: the source stays *Needs investigation* and the Data Team confirms it "
-            "(you can paste a link to the source's API docs with your answer)"
+            "continue although the platform can't onboard that source yet — the agent will look up its public docs "
+            "on the web, but those findings are unverified: the source stays *Needs investigation* and the Data Team "
+            "decides how to onboard it (you can paste a link to the source's API docs with your answer)"
         )
     lines.append(f"\nReply **ok** to accept: {'; '.join(options)}.")
     lines.append("Or propose an alternative, e.g. `date range: 2024-01-01 to now` or `source: ga4`.")
     return "\n".join(lines)
+
+
+def _field_question(field: str) -> str:
+    """The question for a field; the sources question lists the systems onboarded in the ingestion repo."""
+    systems = ", ".join(repos.get().systems()) or "none yet"
+    return FIELD_QUESTIONS[field].replace("{systems}", systems)
 
 
 def fields_question(fields: list[str], errors: dict, first: bool, unreadable: str = "", notes: list[str] = ()) -> str:
@@ -82,7 +88,7 @@ def fields_question(fields: list[str], errors: dict, first: bool, unreadable: st
             lines.append(f"⚠️ {errors[field]}")
     lines.append("Hi! I need a few details to set up your request:" if first else "I need a bit more information:")
     for i, field in enumerate(fields, 1):
-        lines.append(f"{i}. {FIELD_QUESTIONS[field]}")
+        lines.append(f"{i}. {_field_question(field)}")
     if len(fields) > 1:
         lines.append("\n(Answer by number, e.g. `1. ...`, one item per line)")
     question = "\n".join(lines)

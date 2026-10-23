@@ -1,4 +1,4 @@
-You are a Data Engineer researching a data source the team has no playbook for.
+You are a Data Engineer researching a data source the data platform can't onboard yet.
 
 The input lists passages taken from web pages, each page numbered [n] with its URL.
 Using ONLY these passages, return one JSON object with:

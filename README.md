@@ -22,11 +22,11 @@ Detailed plan: see `PLAN.md` (prototype plan).
 |---|---|
 | 0 – Setup | 🟡 Notebook written, not run on Colab; model not picked |
 | 1 – Intake | ✅ |
-| 2 – Knowledge | 🟡 Tools done; only DEMO playbooks/catalog |
+| 2 – Knowledge | ✅ Read from the real ingestion and transformation repos (no demo data) |
 | 3 – Feasibility | ✅ |
 | 4 – Approval + Output | ✅ Approval by the Data Team in the review tab |
 | 5 – Teams + Demo | 🟡 Mock works; real webhook, real requests and demo pending |
-| Added: web research, Docker/Codespaces, UI redesign | ✅ / 🟡 Docker not yet built for real |
+| Added: web research, Docker/Codespaces, UI redesign, repo knowledge | ✅ / 🟡 Docker not yet built for real |
 
 ---
 
@@ -35,14 +35,14 @@ Detailed plan: see `PLAN.md` (prototype plan).
 ```
 intake ⇄ ask_user ─▶ notify ─▶ catalog_check ─▶ feasibility ──gap──▶ intake
                                                     │
-                                     investigate_source (sources without a playbook)
+                                     investigate_source (sources the platform can't onboard yet)
                                                     │
                     approval (Data Team) ──request changes──▶ intake
                                                     │ approve
                                            draft_us ─▶ summary ─▶ END
 ```
 
-Decisions (routing, validation, feasibility) live in code; the optional LLM only helps with language. Web research is advisory. Nothing is drafted before the Data Team approves. Full picture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Feasibility reads the code of the two platform repos: is the data already a dbt model in [data-onboarding-transformation](https://github.com/thanhphat2609/data-onboarding-transformation), already landing through a job in [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion), from an onboarded system (needs a new job), or from a supported source type (needs a new connection)? Decisions (routing, validation, feasibility) live in code; the optional LLM only helps with language. Web research is advisory. Nothing is drafted before the Data Team approves. Full picture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Repo layout
 
@@ -54,27 +54,22 @@ data-onboarding-agent/
 │   ├── config.py              # paths + env vars
 │   ├── state.py               # TypedDict state + request schema
 │   ├── extraction.py          # field extraction (rule-based) + validation
-│   ├── knowledge.py           # lookup_playbook, search_catalog
-│   ├── research.py            # web research for sources without a playbook
+│   ├── repos.py               # reads the ingestion + transformation repos (local checkout or GitHub)
+│   ├── knowledge.py           # lookup_source, search_models (over repos.py)
+│   ├── dbt_project.py         # dbt models from schema .yml files or manifest.json
+│   ├── github.py              # GitHub REST: file tree + file content
+│   ├── research.py            # web research for sources the platform can't onboard yet
 │   ├── llm.py                 # Ollama client (optional, supports API key)
-│   ├── catalog_sync.py        # build catalog from GitHub / local / manifest
 │   ├── graph.py               # build graph, SQLite checkpointer
 │   ├── runner.py              # start/reply API for the UI and scripts
 │   ├── nodes/                 # one file per node
 │   ├── prompts/               # LLM prompts (.md)
 │   └── integrations/teams.py  # Teams webhook (or mock)
-├── playbooks/                 # REAL playbooks (empty for now, see playbooks/README.md)
-├── catalog/                   # REAL dbt catalog (empty until synced)
-├── demo/                      # ⚠️ SAMPLE DATA — delete the whole folder once real data exists
-│   ├── playbooks/             #   ga4.yaml, appsflyer.yaml
-│   ├── catalog/               #   dbt_models.json
-│   └── sample_requests/       #   5 scripted conversations + expected results
 ├── scripts/
-│   ├── export_dbt_catalog.py  # catalog sync from the command line
 │   ├── ollama_auth_proxy.py   # API-key proxy in front of Ollama (runs on Colab)
-│   ├── run_samples.py         # run sample requests, compare with expectations + team handling
+│   ├── run_samples.py         # run scenarios / past requests, compare with expectations + team handling
 │   └── test_teams_webhook.py  # send one test card to a Teams webhook
-├── sample_requests/           # REAL past requests (_template.yaml to start)
+├── tests/scenarios/           # 5 scripted conversations against what the two repos contain today
 ├── docs/                      # architecture, how it works, phase status
 ├── infrastructure/            # Dockerfile + compose.yaml to run the UI (laptop / VM / Codespaces), see infrastructure/README.md
 ├── doc_links.yaml             # official doc links per source, used by web research
@@ -82,10 +77,17 @@ data-onboarding-agent/
 └── outputs/                   # results per request_id (gitignored)
 ```
 
-### Real data vs demo data
-The agent prefers `playbooks/` and `catalog/dbt_models.json`. Only when they are empty does it fall back to `demo/`, and then every feasibility result carries a "DEMO data" warning. Other paths can be set with `PLAYBOOK_DIR` and `CATALOG_PATH`.
+### Where the knowledge comes from
+There is no sample data in this repo. The agent reads the two platform repos on first use (and again on **⚙️ Settings → Reload repositories**):
 
-When moving the code to the company repo: delete the `demo/` folder.
+| Repo | Files read | Tells the agent |
+|---|---|---|
+| data-onboarding-ingestion | `code/templates/sources/*.yaml` | Source types that can be onboarded (e.g. `sqlserver`) |
+| | `pipelines/connections/*.yaml` | Systems already onboarded (e.g. `crm`) |
+| | `pipelines/jobs/*.yaml` | Tables already landing in the lake (`<system>/<schema>/<table>`) |
+| data-onboarding-transformation | `models/**/*.yml` (or `target/manifest.json`) | dbt models that already exist |
+
+Set `INGESTION_PATH` / `TRANSFORMATION_PATH` to local checkouts (e.g. `../data-onboarding-ingestion`); otherwise they are read from GitHub with `GITHUB_TOKEN` (fine-grained, *Contents: Read-only* on both repos).
 
 ## Run locally
 
@@ -94,7 +96,8 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 
 .venv\Scripts\python app.py                   # web UI at http://127.0.0.1:7860 (--share for a public link)
-.venv\Scripts\python scripts/run_samples.py   # run the 5 demo scenarios
+$env:INGESTION_PATH = "..\data-onboarding-ingestion"; $env:TRANSFORMATION_PATH = "..\data-onboarding-transformation"
+.venv\Scripts\python scripts/run_samples.py   # run the 5 scenarios in tests/scenarios
 ```
 
 Or activate the venv first (`.venv\Scripts\Activate.ps1`, or `source .venv/bin/activate` on Linux/Mac) and use plain `python`. If PowerShell says running scripts is disabled, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
@@ -115,11 +118,11 @@ For settings (`.env` / Codespaces secrets), where data is stored, port visibilit
 ┌──────────────────────────────┐   HTTPS +    ┌─────────────────────────────────────┐
 │ python app.py (web UI)       │   API key    │ cloudflared tunnel                  │
 │  ├─ ⚙️ LLM settings ──────────┼─────────────▶│  └─ scripts/ollama_auth_proxy.py    │
-│  ├─ 📦 dbt catalog ─┐         │              │      └─ Ollama (qwen2.5 7B/14B)     │
+│  ├─ ⚙️ Repositories ─┐        │              │      └─ Ollama (qwen2.5 7B/14B)     │
 │  └─ checkpoint, outputs      │              └─────────────────────────────────────┘
 └─────────────────────┼────────┘
                       ▼ GitHub token (stays on your machine)
-               dbt GitHub repo  ──▶  catalog/dbt_models.json
+         ingestion + transformation repos (read on demand)
 ```
 
 Ollama has no authentication, so on Colab `scripts/ollama_auth_proxy.py` sits in front of it: it requires an API key and only allows read/chat APIs (pull/delete are blocked).
@@ -146,21 +149,8 @@ Open the **⚙️ Settings** tab, **LLM** column:
 - **🔄 Fetch models** → pick a model → **Test** → **Apply**
 - **Disable LLM**: back to rule-based. The "In use" line shows what the agent is running on.
 
-### Step 3 — Sync the dbt catalog from GitHub
-In the **⚙️ Settings** tab, **dbt catalog** column:
-- **GitHub**: enter the repo `owner/name`, branch, the dbt project folder inside the repo (if not at the root), and a token. Click **Sync catalog**.
-- **Local**: enter the path of a dbt project folder, or a `manifest.json` file.
-
-`target/manifest.json` is used if present; otherwise the schema `.yml` files under `models/` are read (model name, description, columns, tags, `meta`). The result is written to `catalog/dbt_models.json`, and the agent switches to it from the demo catalog right away.
-
-GitHub token: use a **fine-grained token with `Contents: Read-only`** on the dbt repo only. It is used only during the sync and never written to disk. To avoid re-entering it, set the `GITHUB_TOKEN` env var and leave the token field empty.
-
-Command-line sync also works:
-```bash
-python scripts/export_dbt_catalog.py --github owner/repo --ref main --subdir dbt   # token from GITHUB_TOKEN
-python scripts/export_dbt_catalog.py --project-dir ../my-dbt-project
-python scripts/export_dbt_catalog.py --manifest ../my-dbt-project/target/manifest.json
-```
+### Step 3 — Check the repositories
+In the **⚙️ Settings** tab, **Repositories** column: where each repo was read from, the systems, jobs and dbt models found, and any error (e.g. a token that can't read a repo). **↻ Reload repositories** reads them again after a merge.
 
 ### Defaults at startup
 Settings chosen in the UI are lost when the app stops. To have them preset, set env vars before starting:
@@ -176,16 +166,18 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 | `OLLAMA_HOST` | `http://localhost:11434` | Local Ollama URL, or the tunnel URL from Colab |
 | `OLLAMA_API_KEY` | (empty) | Key for the proxy on Colab |
 | `OLLAMA_MODEL` | (empty) | e.g. `qwen2.5:7b`. Empty = rule-based |
-| `DBT_GITHUB_TOKEN` | (empty) | Token to read the dbt repo, used when the UI token field is empty. Wins over `GITHUB_TOKEN` (use this one in Codespaces) |
-| `GITHUB_TOKEN` | (empty) | Fallback for `DBT_GITHUB_TOKEN` |
+| `GITHUB_TOKEN` | (empty) | Fine-grained token, *Contents: Read-only* on both repos. Not needed with local checkouts. In Codespaces, export your own: the preset one only reads the codespace's repo |
+| `INGESTION_REPO`, `INGESTION_REF` | `thanhphat2609/data-onboarding-ingestion`, `main` | |
+| `TRANSFORMATION_REPO`, `TRANSFORMATION_REF` | `thanhphat2609/data-onboarding-transformation`, `main` | |
+| `INGESTION_PATH`, `TRANSFORMATION_PATH` | (empty) | Local checkouts; win over GitHub |
+| `TRANSFORMATION_DBT_DIR` | (empty) | dbt project folder inside the transformation repo |
 | `CHECKPOINT_DB` | `./checkpoints.db` | |
 | `OUTPUT_DIR` | `./outputs` | |
 | `TEAMS_WEBHOOK_URL` | (empty) | Empty = mock, writes to a file |
 | `REVIEWER_KEY` | (empty) | Key for the 🛡 Data Team review tab. Empty = open to everyone |
-| `WEB_RESEARCH` | `1` | `0` = no web research for sources without a playbook (questions are still generated) |
+| `WEB_RESEARCH` | `1` | `0` = no web research for sources the platform can't onboard yet (questions are still generated) |
 | `DOC_LINKS_PATH` | `./doc_links.yaml` | Known doc links per source |
 | `RESEARCH_MAX_PAGES` | `3` | Pages read per source |
-| `PLAYBOOK_DIR`, `CATALOG_PATH` | `playbooks/`, `catalog/dbt_models.json` (fallback `demo/`) | |
 
 ## After the prototype
 

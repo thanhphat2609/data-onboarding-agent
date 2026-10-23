@@ -1,4 +1,4 @@
-"""Web research for a source that has no playbook: find its docs, read them, draft a playbook + questions.
+"""Web research for a source the platform can't onboard yet: find its docs, read them, draft notes + questions.
 
 Finding pages (no API key needed):
   A. Known doc links: `doc_links.yaml` (kept by the team) + links the requester pasted in the chat.
@@ -229,8 +229,8 @@ def _llm_findings(source: str, pages: list[dict]) -> dict:
     }
 
 
-def draft_playbook(source: str, findings: dict) -> str:
-    """Playbook skeleton in the same format as playbooks/*.yaml, every value to be checked by the team."""
+def draft_source_notes(source: str, findings: dict) -> str:
+    """Notes for onboarding the source (access methods, limits, docs), every value to be checked by the team."""
     methods = [
         {
             "type": m.get("type"),
@@ -246,16 +246,14 @@ def draft_playbook(source: str, findings: dict) -> str:
         "display_name": source,
         "review_status": "draft",
         "access_methods": methods,
-        "current_connector": "TODO",
-        "existing_models": [],
         "owner": "TODO",
         "notes": "",
         "research_sources": [p["url"] for p in findings["pages"] if not p.get("error")],
     }
     header = (
-        f"# DRAFT written by the agent from web research — UNVERIFIED.\n"
-        f"# Check every value against the docs and our account, set review_status: reviewed,\n"
-        f"# then save it as playbooks/{slug(source)}.yaml.\n"
+        "# DRAFT written by the agent from web research — UNVERIFIED.\n"
+        "# Check every value against the docs and our account. To onboard the source, the platform needs\n"
+        "# a source template in data-onboarding-ingestion (code/templates/sources/).\n"
     )
     return header + yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
 

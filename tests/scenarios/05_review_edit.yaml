@@ -1,0 +1,19 @@
+name: All details up front - the Data Team changes the ETA, then approves
+today: "2026-10-23"
+initial_message: |
+  dataset: current CRM customers with segment
+  source: crm
+  date range: 2026-01-01 to now
+  eta: 2026-10-26
+  refresh: daily
+  grain: one row per customer
+  consumers: Sales team, ad-hoc analysis
+answers: []
+approval:
+  - {action: edit, comment: "change eta to 2026-11-15"}
+  - {action: approve}
+expected:
+  max_turns: 0
+  gap_types: []
+  final_eta: "2026-11-15"
+  recommendation: {crm: crm_customers_current}

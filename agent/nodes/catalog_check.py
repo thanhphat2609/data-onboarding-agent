@@ -1,23 +1,25 @@
-"""Search the dbt catalog for models that already hold the requested data."""
-from agent import config
-from agent.knowledge import search_catalog
+"""Search the dbt models of the transformation repo for data the request may already have."""
+from agent import config, repos
+from agent.knowledge import search_models
 
 
 def catalog_check(state: dict) -> dict:
     request = state["request"]
     query = f"{request.get('dataset_description', '')} {request.get('grain', '')}"
+    kb = repos.get()
     found = []
     for source in request.get("sources", []):
-        for model in search_catalog(query, source=source, top_k=3):
+        system, _ = repos.parse_source(source, kb)
+        for model in search_models(query, system=system):
             if model["score"] >= config.CATALOG_MIN_SCORE:
                 found.append(
                     {
                         "name": model["name"],
-                        "source": model.get("source"),
+                        "system": system,
                         "layer": model.get("layer"),
                         "description": model.get("description", ""),
                         "grain": model.get("grain", ""),
-                        "data_from": model.get("data_from"),
+                        "path": model.get("path", ""),
                         "score": model["score"],
                     }
                 )

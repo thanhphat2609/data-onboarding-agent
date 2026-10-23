@@ -1,102 +1,107 @@
-"""Per-source feasibility: compare the requested date range with what is obtainable, and propose how to get the data.
+"""Per-source feasibility from the two platform repositories: is the requested data already modelled in dbt
+(transformation repo), already landing in the lake (ingestion jobs), from a system that is already onboarded
+(ingestion connections), or from a source type the platform can onboard (ingestion source templates)?
 
-All logic is plain code over playbooks + catalog; the LLM takes no part in these decisions.
+All logic is plain code over agent/repos.py; the LLM takes no part in these decisions.
 """
 from datetime import timedelta
 
-from agent import config
+from agent import config, repos
 from agent.extraction import to_date
-from agent.knowledge import lookup_playbook
-from agent.nodes.common import get_today, rel
+from agent.knowledge import singular, tokenize
+from agent.nodes.common import get_today
+
+# What has to be built, from least to most work, with the team's rough estimate in days.
+# Used only to flag tight ETAs; adjust to the team's real experience.
+LEAD_TIME_DAYS = {"existing_model": 1, "landed": 3, "new_job": 5, "new_connection": 10}
 
 
-def _earliest(method: dict, today):
-    """Earliest date obtainable via one access method (None = no known limit)."""
-    candidates = []
-    if d := to_date(method.get("available_from")):
-        candidates.append(d)
-    if method.get("max_lookback_days"):
-        candidates.append(today - timedelta(days=int(method["max_lookback_days"])))
-    return max(candidates) if candidates else None
+def _repo_ref(repo: str, path: str) -> str:
+    return f"{repo.split('/')[-1]}: {path}"
 
 
-def assess_source(source: str, request: dict, models: list[dict], today) -> dict:
-    start = to_date(request["date_range"]["start"])
+def _requested_tables(request: dict, known: set[str]) -> set[str]:
+    """Known tables of the system that the request mentions ("customers" matches "customer")."""
+    words = {singular(t) for t in tokenize(f"{request.get('dataset_description', '')} {request.get('grain', '')}")}
+    return {t for t in known if singular(t) in words}
+
+
+# Parts of dbt model names that are not table names: layer prefixes and common suffixes.
+_MODEL_NAME_NOISE = {"stg", "int", "fct", "dim", "base", "mart", "current", "daily", "latest", "history", "snapshot"}
+
+
+def _model_tables(model: dict) -> set[str]:
+    """Table-like words of a model name: crm_customers_current -> {"customer"} (system and layer words dropped)."""
+    return {singular(t) for t in model["name"].split("_") if t and t != model.get("system") and t not in _MODEL_NAME_NOISE}
+
+
+def assess_source(source: str, request: dict, models: list[dict], today, kb: repos.Knowledge) -> dict:
     eta = to_date(request["eta"])
-    result = {"source": source, "playbook": None, "playbook_status": None, "options": [], "recommendation": None, "gap": None, "risks": []}
+    system, stype = repos.parse_source(source, kb)
+    result = {"source": source, "system": system, "recommendation": None, "gap": None, "risks": []}
+    jobs, conns = kb.jobs_for(system), kb.connections_for(system)
+    candidates = [m for m in models if m.get("system") == system]
 
-    pb = lookup_playbook(source)
-    if pb is None:
+    # Table level: "CRM segments" is not covered by a model of CRM customers.
+    known_tables = {j["table"] for j in jobs} | {t for m in kb.models_for(system) for t in _model_tables(m)}
+    wanted = _requested_tables(request, known_tables)
+    if jobs or candidates:
+        if wanted:
+            jobs = [j for j in jobs if j["table"] in wanted]
+            candidates = [m for m in candidates if {singular(t) for t in wanted} & _model_tables(m)]
+        else:
+            # Nothing the request says matches a table we know: assume it needs a table that isn't there yet.
+            landed = ", ".join(sorted({j["table"] for j in kb.jobs_for(system)})) or "none"
+            result["risks"].append(
+                f"The request doesn't name a table of `{system}` that the platform knows (landing today: {landed}); "
+                f"the Data Team should confirm which tables are needed."
+            )
+            jobs, candidates = [], []
+
+    if candidates:
+        best = sorted(candidates, key=lambda m: (m.get("layer") != "mart", -m.get("score", 0)))[0]
+        rec = {"kind": "existing_model", "name": best["name"], "ref": _repo_ref(config.TRANSFORMATION_REPO, best["path"])}
+    elif jobs:
+        rec = {
+            "kind": "landed",
+            "name": ", ".join(j["name"] for j in jobs),
+            "tables": [j["path"] for j in jobs],
+            "schedule": ", ".join(sorted({str(j["schedule"]) for j in jobs})),
+            "ref": _repo_ref(config.INGESTION_REPO, ", ".join(j["file"] for j in jobs)),
+        }
+    elif conns:
+        conn = conns[0]
+        rec = {"kind": "new_job", "name": conn["name"], "template": conn["template"], "ref": _repo_ref(config.INGESTION_REPO, conn["file"])}
+    elif stype and stype in kb.templates:
+        rec = {"kind": "new_connection", "name": stype, "ref": _repo_ref(config.INGESTION_REPO, kb.templates[stype]["file"])}
+    else:
+        why = (
+            f"`{stype}` has no source template in the ingestion repo"
+            if stype else "it is not an onboarded system and no supported source type was named"
+        )
         result["gap"] = {
             "type": "unknown_source",
             "source": source,
-            "message": f"[{source}] No playbook for this source yet — access method and date range are unknown.",
+            "message": f"[{source}] The platform can't onboard this source yet: {why}.",
         }
-        result["risks"].append(f"Source `{source}` has no playbook; the Data Team must investigate before committing.")
+        result["risks"].append(f"Source `{source}` can't be onboarded by the platform yet; the Data Team must investigate before committing.")
         return result
 
-    ref = pb["_file"]
-    result["playbook"] = ref
-    result["playbook_status"] = pb.get("review_status", "draft")
-    if result["playbook_status"] != "reviewed":
-        result["risks"].append(f"Playbook `{ref}` has not been reviewed by the team — date range information may be inaccurate.")
-
-    for m in models:
-        if m.get("source") != source:
-            continue
-        data_from = to_date(m.get("data_from"))
-        result["options"].append(
-            {
-                "kind": "existing_model",
-                "name": m["name"],
-                "available_from": data_from.isoformat() if data_from else None,
-                "covers": data_from is None or data_from <= start,
-                "lead_time_days": 1,
-                "ref": rel(config.CATALOG_PATH),
-            }
-        )
-    for method in pb.get("access_methods", []):
-        earliest = _earliest(method, today)
-        result["options"].append(
-            {
-                "kind": "ingest",
-                "name": method["type"],
-                "available_from": earliest.isoformat() if earliest else None,
-                "covers": earliest is None or earliest <= start,
-                "lead_time_days": method.get("typical_lead_time_days"),
-                "notes": method.get("notes", ""),
-                "connector": pb.get("current_connector"),
-                "ref": ref,
-            }
-        )
-
-    if not result["options"]:
-        result["gap"] = {"type": "unknown_source", "source": source, "message": f"[{source}] The playbook has no access methods."}
-        return result
-
-    covering = [o for o in result["options"] if o["covers"]]
-    if covering:
-        result["recommendation"] = covering[0]  # existing models come first, so they are preferred
-    else:
-        best = min(result["options"], key=lambda o: o["available_from"])
-        result["recommendation"] = best
-        result["gap"] = {
-            "type": "date_range",
-            "source": source,
-            "requested_start": start.isoformat(),
-            "available_from": best["available_from"],
-            "message": (
-                f"[{source}] You need data from {start}, but the earliest available is {best['available_from']} "
-                f"(via `{best['name']}`, per {best['ref']})."
-            ),
-        }
-
-    rec = result["recommendation"]
-    if rec.get("lead_time_days") and eta and today + timedelta(days=int(rec["lead_time_days"])) > eta:
+    rec["lead_time_days"] = LEAD_TIME_DAYS[rec["kind"]]
+    result["recommendation"] = rec
+    if eta and today + timedelta(days=rec["lead_time_days"]) > eta:
         result["risks"].append(
-            f"ETA {eta} is tight: `{rec['name']}` usually takes ~{rec['lead_time_days']} days (per {rec['ref']})."
+            f"ETA {eta} is tight: {KIND_TEXT[rec['kind']]} usually takes ~{rec['lead_time_days']} days."
         )
     return result
+
+
+KIND_TEXT = {
+    "existing_model": "reusing a dbt model",
+    "landed": "adding dbt models on landed data",
+    "new_job": "adding an ingestion job and dbt models",
+    "new_connection": "onboarding a connection, a job and dbt models",
+}
 
 
 def feasibility(state: dict) -> dict:
@@ -104,16 +109,21 @@ def feasibility(state: dict) -> dict:
     request = state["request"]
     accepted = set(state.get("accepted_gaps") or [])
     models = state.get("existing_models") or []
+    kb = repos.get()
 
-    per_source = [assess_source(s, request, models, today) for s in request.get("sources", [])]
+    per_source = [assess_source(s, request, models, today, kb) for s in request.get("sources", [])]
     gaps = [
         r["gap"]
         for r in per_source
         if r["gap"] and f"{r['gap']['type']}:{r['source']}" not in accepted
     ]
-    risks = [risk for r in per_source for risk in r["risks"]]
-    if demo := config.demo_parts():
-        risks.insert(0, f"Using DEMO {' + '.join(demo)} from `demo/` — feasibility results are illustrative only.")
+    risks = list(kb.errors) + [risk for r in per_source for risk in r["risks"]]
+    start = to_date((request.get("date_range") or {}).get("start"))
+    if start and start < today and any(r["recommendation"] and r["recommendation"]["kind"] != "existing_model" for r in per_source):
+        risks.append(
+            f"History: ingestion lands one snapshot per day from its first run, so data from {start} up to that run "
+            "is only available as it is in the source today."
+        )
     if gaps:
         overall = "gap"
     elif risks:

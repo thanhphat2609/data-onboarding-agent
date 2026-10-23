@@ -4,29 +4,25 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-DEMO_DIR = ROOT / "demo"
+# The agent's knowledge comes from the code of the two platform repositories (agent/repos.py):
+# - ingestion: source templates, onboarded connections and ingestion jobs (what lands in the lake)
+# - transformation: dbt models (what is already modelled)
+# Each is read from a local checkout when *_PATH is set, otherwise from GitHub at *_REF.
+INGESTION_REPO = os.getenv("INGESTION_REPO", "thanhphat2609/data-onboarding-ingestion")
+INGESTION_REF = os.getenv("INGESTION_REF", "main")
+INGESTION_PATH = os.getenv("INGESTION_PATH", "")
+TRANSFORMATION_REPO = os.getenv("TRANSFORMATION_REPO", "thanhphat2609/data-onboarding-transformation")
+TRANSFORMATION_REF = os.getenv("TRANSFORMATION_REF", "main")
+TRANSFORMATION_PATH = os.getenv("TRANSFORMATION_PATH", "")
+# Folder of the dbt project inside the transformation repo ("" = repo root).
+TRANSFORMATION_DBT_DIR = os.getenv("TRANSFORMATION_DBT_DIR", "")
 
 
-def _knowledge_path(env: str, real: Path, demo: Path) -> Path:
-    """Prefer the env var, then real data; fall back to demo/ while no real data exists."""
-    if os.getenv(env):
-        return Path(os.environ[env])
-    has_real = any(real.glob("*.yaml")) if real.suffix == "" else real.exists()
-    return real if has_real else demo
+# GitHub token that can read both repositories (fine-grained, Contents: Read-only). Not needed with local checkouts.
+# In Codespaces GITHUB_TOKEN is preset to a token for the codespace's own repo only: export your own before starting.
+def github_token() -> str:
+    return os.getenv("GITHUB_TOKEN", "")
 
-
-PLAYBOOK_DIR = _knowledge_path("PLAYBOOK_DIR", ROOT / "playbooks", DEMO_DIR / "playbooks")
-CATALOG_PATH = _knowledge_path("CATALOG_PATH", ROOT / "catalog" / "dbt_models.json", DEMO_DIR / "catalog" / "dbt_models.json")
-
-
-def demo_parts() -> list[str]:
-    """Which knowledge sources currently come from demo/ (re-evaluated, since catalog sync can change it)."""
-    parts = []
-    if PLAYBOOK_DIR.is_relative_to(DEMO_DIR):
-        parts.append("playbook")
-    if CATALOG_PATH.is_relative_to(DEMO_DIR):
-        parts.append("catalog")
-    return parts
 
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", ROOT / "outputs"))
 PROMPT_DIR = ROOT / "agent" / "prompts"
@@ -40,11 +36,6 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "")
 # API key for a remote Ollama behind scripts/ollama_auth_proxy.py (e.g. hosted on Colab).
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
 
-# GitHub token for the dbt catalog sync. DBT_GITHUB_TOKEN wins: in Codespaces GITHUB_TOKEN is preset to a token
-# that can only read the codespace's own repo, and secrets there can't be named GITHUB_*.
-def dbt_github_token() -> str:
-    return os.getenv("DBT_GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN", "")
-
 # Key for the "Data Team review" tab of the web UI (approve / request changes). Empty = tab open to everyone.
 # A soft gate so requesters don't approve their own requests; the app itself has no login.
 REVIEWER_KEY = os.getenv("REVIEWER_KEY", "")
@@ -52,7 +43,7 @@ REVIEWER_KEY = os.getenv("REVIEWER_KEY", "")
 # Teams Workflows webhook: leave empty to mock (messages are written to outputs/).
 TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")
 
-# Web research for sources without a playbook (agent/research.py). WEB_RESEARCH=0 turns it off
+# Web research for sources the platform can't onboard yet (agent/research.py). WEB_RESEARCH=0 turns it off
 # (questions for the Data Team are still generated). doc_links.yaml lists known doc URLs per source.
 WEB_RESEARCH = os.getenv("WEB_RESEARCH", "1").strip().lower() not in ("0", "false", "no", "off")
 DOC_LINKS_PATH = Path(os.getenv("DOC_LINKS_PATH", ROOT / "doc_links.yaml"))
