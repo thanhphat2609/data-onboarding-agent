@@ -9,6 +9,8 @@ services:
     build:
       context: ..
       dockerfile: infrastructure/Dockerfile
+      args:
+        WITH_BROWSER: ${WITH_BROWSER:-false}   # true = headless Chromium for web research (~400 MB)
     image: data-onboarding-agent:latest
     # Localhost only: the app has no login. On a VM use an SSH tunnel or a reverse proxy with auth.
     ports:
@@ -25,6 +27,7 @@ services:
       TRANSFORMATION_REF: ${TRANSFORMATION_REF:-main}
       TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
       WEB_RESEARCH: ${WEB_RESEARCH:-1}
+      WEBSEARCH_BROWSER: ${WEBSEARCH_BROWSER:-auto}
       REVIEWER_KEY: ${REVIEWER_KEY:-}
       # Sessions live next to the other results, so everything the app writes is in outputs/ on the host.
       CHECKPOINT_DB: /app/outputs/checkpoints.db

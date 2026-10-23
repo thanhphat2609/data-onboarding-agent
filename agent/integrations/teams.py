@@ -1,4 +1,9 @@
-"""Post messages to Teams via a Workflows webhook. Without TEAMS_WEBHOOK_URL, mock by writing to a file."""
+"""Post messages to Teams via a Workflows webhook. Without TEAMS_WEBHOOK_URL, mock by writing to a file.
+
+Check a webhook before a real run (sends one test card):
+
+    python -m agent.integrations.teams "<webhook url>"     # or set TEAMS_WEBHOOK_URL
+"""
 import json
 import logging
 from datetime import datetime
@@ -69,3 +74,29 @@ def send_message(request_id: str, title: str, text: str) -> str:
     _write_mock(request_id, thread_ref, card)
     log.info("[MOCK TEAMS] %s — %s", title, text[:200])
     return thread_ref
+
+
+def _send_test_card(url: str) -> int:
+    card = _adaptive_card(
+        "[TEST] data-onboarding-agent",
+        f"Test message sent at {datetime.now():%Y-%m-%d %H:%M:%S}.\n\n"
+        "- If you can read this card in the channel, the webhook works.\n- **Bold** and lists should render.",
+    )
+    try:
+        post_card(url, card)
+    except requests.RequestException as e:
+        body = getattr(e.response, "text", "")[:500] if getattr(e, "response", None) is not None else ""
+        print(f"FAILED: {e}\n{body}")
+        return 1
+    print("Sent. Check the Teams channel — Workflows can take a few seconds to post.")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    target = sys.argv[1] if len(sys.argv) > 1 else config.TEAMS_WEBHOOK_URL
+    if not target:
+        print("No webhook URL: pass it as an argument or set TEAMS_WEBHOOK_URL.")
+        sys.exit(1)
+    sys.exit(_send_test_card(target))

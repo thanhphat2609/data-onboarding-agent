@@ -18,6 +18,7 @@ Status of each phase of the prototype plan ([PLAN.md](../PLAN.md)) plus the work
 | Added: Infrastructure | Docker / Codespaces | 🟡 Written, not yet built in real Docker |
 | Added: UI redesign + Data Team review | Friendlier UI; approval by the Data Team only | ✅ Tested locally in a browser |
 | Added: Knowledge from the platform repos | No sample data; the agent reads the two repos | ✅ 5/5 scenarios against the real repos |
+| Added: Web search port + code layout | Python port of web-search-mcp (module + MCP server); `agent/` in functional folders | ✅ Tested live (search, pages, research, MCP over stdio) |
 
 ---
 
@@ -34,10 +35,10 @@ Status of each phase of the prototype plan ([PLAN.md](../PLAN.md)) plus the work
 - ✅ `SqliteSaver` checkpointer; "restart and continue" tested locally (new runner on the same `.db` file). 🟡 Not yet tested with a `.db` file on Google Drive
 
 ## Phase 2 – Knowledge ✅
-- ✅ *Since 2026-10-23:* the agent reads the code of the two platform repos ([agent/repos.py](../agent/repos.py)) from a local checkout or GitHub (`GITHUB_TOKEN`):
+- ✅ *Since 2026-10-23:* the agent reads the code of the two platform repos ([agent/repos/__init__.py](../agent/repos/__init__.py)) from a local checkout or GitHub (`GITHUB_TOKEN`):
   - [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion): source templates, connections, jobs
   - [data-onboarding-transformation](https://github.com/thanhphat2609/data-onboarding-transformation): dbt models
-- ✅ Tools `lookup_source(system)` and `search_models(query)` ([agent/knowledge.py](../agent/knowledge.py))
+- ✅ Tools `lookup_source(system)` and `search_models(query)` ([agent/repos/lookup.py](../agent/repos/lookup.py))
 - *Replaced:* YAML playbooks per source (`playbooks/`, demo GA4/AppsFlyer playbooks) and a synced dbt catalog (`catalog/`, Settings → dbt catalog, `scripts/export_dbt_catalog.py`)
 
 ## Phase 3 – Feasibility ✅
@@ -53,8 +54,8 @@ Status of each phase of the prototype plan ([PLAN.md](../PLAN.md)) plus the work
 - ✅ Outputs written to `outputs/<request_id>/`: `request.json`, `feasibility.json`, `user_story.md`, `summary.md`
 
 ## Phase 5 – Teams + Demo
-- 🟡 Teams Workflows webhook (notify + summary, Adaptive Card): code exists, **not tested with a real webhook**. Check a URL with `python scripts/test_teams_webhook.py "<url>"`. Without `TEAMS_WEBHOOK_URL` it mocks by writing `outputs/<request_id>/teams_messages.jsonl`. If the webhook call fails, the flow continues and the message goes to the same file with `webhook_error`
-- ✅ 5 scenarios in [tests/scenarios/](../tests/scenarios/) against what the two repos contain today (5/5 pass): existing model, new job, new connection, unknown source, Data Team change request. ⬜ Add 3–5 real past requests (same YAML format, own folder)
+- 🟡 Teams Workflows webhook (notify + summary, Adaptive Card): code exists, **not tested with a real webhook**. Check a URL with `python -m agent.integrations.teams "<url>"`. Without `TEAMS_WEBHOOK_URL` it mocks by writing `outputs/<request_id>/teams_messages.jsonl`. If the webhook call fails, the flow continues and the message goes to the same file with `webhook_error`
+- 🟡 Replay tool for past requests: `python -m agent.workflow.evaluate <folder>` ([evaluate.py](../agent/workflow/evaluate.py)). The 5 scripted scenarios used during development (2026-10-23) were removed from the repo. ⬜ Add 3–5 real past requests
 - ✅ Comparison tooling: a `team_handling` block in a sample (how the team actually handled it) is compared with the agent's result. Every run writes `outputs/eval/<timestamp>/report.md` (with a reviewer rating column) and `mistakes.csv` (one row per difference, with a `reviewer_notes` column). ⬜ Run it on real requests and review
 - 🟡 Demo runbook: [DEMO.md](../DEMO.md). ⬜ Demo to the team
 
@@ -62,11 +63,11 @@ Status of each phase of the prototype plan ([PLAN.md](../PLAN.md)) plus the work
 
 ## Added: Web research for sources the platform can't onboard yet ✅ (2026-10-20)
 When the platform can't onboard a source and the requester replies `ok`, the `investigate_source` step (after feasibility, before approval) looks up the source's public docs:
-1. **Finds pages**: links the requester pasted in the chat → links in [doc_links.yaml](../doc_links.yaml) (kept by the team) → a DuckDuckGo search (`ddgs`, no API key) for the remaining slots (max 3 pages).
+1. **Finds pages**: links the requester pasted in the chat → a DuckDuckGo search (`ddgs`, no API key) for the remaining slots (max 3 pages).
 2. **Reads them** with plain HTTP and keeps sentences about data history/retention, quotas, auth and access methods. Pages that need JavaScript to render can't be read; they are listed as such.
 3. **Writes**: a *Web research (unverified)* section and a *Questions for the Data Team* section in the User Story, the questions in the Teams summary card, a short note in the review panel, and draft source notes `outputs/<request_id>/source_notes_<source>.yaml` (renamed from the draft playbook on 2026-10-23). With an LLM it also summarises and fills access methods in the draft; without one you get the key passages + standard questions.
 
-The findings **never change the feasibility result** (the source stays "Needs investigation"). Only the source name + fixed keywords are sent to the search engine, never the request text. Turn it off with `WEB_RESEARCH=0`; `run_samples.py` keeps it off unless you pass `--web`.
+The findings **never change the feasibility result** (the source stays "Needs investigation"). Only the source name + fixed keywords are sent to the search engine, never the request text. Turn it off with `WEB_RESEARCH=0`; `agent/workflow/evaluate.py` keeps it off unless you pass `--web`.
 To make the source known: add a source template, connection or job for it in data-onboarding-ingestion; the agent picks it up on reload.
 
 ## Added: Infrastructure 🟡 (2026-10-23)
@@ -87,13 +88,24 @@ To make the source known: add a source template, connection or job for it in dat
 
 ## Added: Knowledge from the platform repos ✅ (2026-10-23)
 - ✅ No sample data left in this repo: removed `demo/`, `playbooks/`, `catalog/`, `sample_requests/_template.yaml` and `scripts/export_dbt_catalog.py`
-- ✅ [agent/repos.py](../agent/repos.py) reads data-onboarding-ingestion (templates, connections, jobs) and data-onboarding-transformation (dbt models) into one cached `Knowledge`; **⚙️ Settings → Repositories** shows what was read and reloads it
+- ✅ [agent/repos/__init__.py](../agent/repos/__init__.py) reads data-onboarding-ingestion (templates, connections, jobs) and data-onboarding-transformation (dbt models) into one cached `Knowledge`; **⚙️ Settings → Repositories** shows what was read and reloads it
 - ✅ Sources are systems of the ingestion repo (e.g. `crm`), or a new system named with its type ("ERP on PostgreSQL")
 - ✅ Feasibility per table, User Story pipeline steps that name the files to add in each repo, UI labels per kind of work
 - ✅ `GITHUB_TOKEN` (fine-grained, read-only on both repos) replaces `DBT_GITHUB_TOKEN`
-- ✅ Scenarios rewritten in `tests/scenarios/` (5/5 pass against the real repos)
+- ✅ Scenarios rewritten against the real repos (5/5 passed; later removed from the repo, see Phase 5)
+
+## Added: Web search port + code layout ✅ (2026-10-23)
+- ✅ [agent/research/websearch/](../agent/research/websearch/): Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT, license kept next to the code). Search without API keys (Bing → Brave → DuckDuckGo with the original's quality check, plus the `ddgs` package as last fallback), page content over HTTP with a headless-Chromium fallback, concurrent fetching
+- ✅ MCP server with the original's three tools: `python -m agent.research.websearch.mcp_server` (tested over stdio with an MCP client)
+- ✅ Web research ([investigate.py](../agent/research/investigate.py)) uses it instead of `ddgs` + a plain HTML parser, so JavaScript-only docs pages can be read when the browser is installed
+- ✅ The headless browser is optional: Playwright is in `requirements.txt`, but Chromium is only downloaded on request (`python -m playwright install chromium`, Docker `WITH_BROWSER=true`); without it everything runs over HTTP
+- ✅ Not ported on purpose: fingerprint spoofing / simulated mouse movement; two cleanup bugs fixed (see [ARCHITECTURE.md](ARCHITECTURE.md#web-search))
+- ✅ Removed `doc_links.yaml` (team-kept doc links per source): research now uses the links the requester pastes plus web search
+- ✅ `agent/` reorganised into `workflow/`, `repos/`, `research/`, `llm/`, `integrations/` (5/5 scenarios passed after the move); `scripts/` dissolved: replay → `agent/workflow/evaluate.py`, Ollama proxy → `notebooks/`, Teams test → `python -m agent.integrations.teams <url>`
+- ⬜ Build the Docker image with `WITH_BROWSER=true`
 
 ## Known issues / backlog
+- **Key-less web search is fragile.** Engines can rate-limit or bot-check a network: in testing, Bing gave generic results even in the headless browser, html.duckduckgo.com answered with a challenge, and `ddgs` stopped returning results after many test queries. Brave in the headless browser was the reliable engine. Research then reports "web search found nothing" and still asks its standard questions. A search API with a key would remove this.
 - ✅ *Fixed 2026-10-23.* **Relative ETAs were not understood.** "Go live should be next two weeks" made the agent repeat the ETA question with no explanation. It now reads relative dates in English and Vietnamese ("in 2 weeks", "end of next month", "2 tuần nữa", "cuối tháng") and confirms the date it computed ("Noted: go-live date 2026-11-06"). When nothing in an answer matches the questions, it says so instead of silently asking again.
 - **"ok" can be taken as a field answer.** If a field is still pending (e.g. "Used by"), replying `ok` stores "ok" as its value. Seen 2026-10-23. Fix idea: ignore yes-words as values for free-text fields.
 - **The Data Team can't ask the requester a question.** "Request changes" applies the comment as an edit to the request. A "send back with a question" action would need a new branch from `approval` to `ask_user`.
@@ -104,9 +116,9 @@ To make the source known: add a source template, connection or job for it in dat
 ## Next steps
 1. Run the notebook on Colab: tool-calling test, pick a model, host the model for the web app.
 2. Build and run the Docker image (`docker compose -f infrastructure/compose.yaml up -d --build`), locally or in a codespace, with `GITHUB_TOKEN` set.
-3. As the platform grows (more templates, connections, jobs, dbt models), re-run `scripts/run_samples.py` and update `tests/scenarios/` expectations.
-4. Write 3–5 real past requests as YAML (including `team_handling`), run `python scripts/run_samples.py <folder>`, review `report.md` / `mistakes.csv`.
-5. Hook up the real Teams webhook (`scripts/test_teams_webhook.py` first).
+3. As the platform grows (more templates, connections, jobs, dbt models), replay a few requests with `python -m agent.workflow.evaluate <folder>` to check the recommendations.
+4. Write 3–5 real past requests as YAML (including `team_handling`), run `python -m agent.workflow.evaluate <folder>`, review `report.md` / `mistakes.csv`.
+5. Hook up the real Teams webhook (`python -m agent.integrations.teams <url>` first).
 6. Set `REVIEWER_KEY` and demo to the team following [DEMO.md](../DEMO.md): one person as requester, one as the Data Team.
 
 ## After the prototype

@@ -25,7 +25,7 @@ def github_token() -> str:
 
 
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", ROOT / "outputs"))
-PROMPT_DIR = ROOT / "agent" / "prompts"
+PROMPT_DIR = ROOT / "agent" / "llm" / "prompts"
 
 # On Colab: CHECKPOINT_DB=/content/drive/MyDrive/data-onboarding-agent/checkpoints.db
 CHECKPOINT_DB = os.getenv("CHECKPOINT_DB", str(ROOT / "checkpoints.db"))
@@ -33,7 +33,7 @@ CHECKPOINT_DB = os.getenv("CHECKPOINT_DB", str(ROOT / "checkpoints.db"))
 # LLM: leave OLLAMA_MODEL empty to run rule-based (no GPU needed). Can also be changed at runtime from the web UI.
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "")
-# API key for a remote Ollama behind scripts/ollama_auth_proxy.py (e.g. hosted on Colab).
+# API key for a remote Ollama behind notebooks/ollama_auth_proxy.py (e.g. hosted on Colab).
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
 
 # Key for the "Data Team review" tab of the web UI (approve / request changes). Empty = tab open to everyone.
@@ -43,10 +43,9 @@ REVIEWER_KEY = os.getenv("REVIEWER_KEY", "")
 # Teams Workflows webhook: leave empty to mock (messages are written to outputs/).
 TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")
 
-# Web research for sources the platform can't onboard yet (agent/research.py). WEB_RESEARCH=0 turns it off
-# (questions for the Data Team are still generated). doc_links.yaml lists known doc URLs per source.
+# Web research for sources the platform can't onboard yet (agent/research/). WEB_RESEARCH=0 turns it off
+# (questions for the Data Team are still generated).
 WEB_RESEARCH = os.getenv("WEB_RESEARCH", "1").strip().lower() not in ("0", "false", "no", "off")
-DOC_LINKS_PATH = Path(os.getenv("DOC_LINKS_PATH", ROOT / "doc_links.yaml"))
 RESEARCH_MAX_PAGES = int(os.getenv("RESEARCH_MAX_PAGES", "3"))
 
 # Max fields asked per turn, to stay within the <= 5 turns target.

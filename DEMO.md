@@ -7,11 +7,11 @@ About 20 minutes. Goal: show the 3 things the prototype must prove (see `PLAN.md
 2. **Repositories**: set `GITHUB_TOKEN` (read access to both repos), or `INGESTION_PATH` / `TRANSFORMATION_PATH` to local checkouts. In the app, **⚙️ Settings → Repositories** must list the systems, jobs and dbt models with no error. Today that is system `crm`, job `crm-customers-daily`, models `stg_crm__customers` and `crm_customers_current`, and source template `sqlserver`.
 3. **Teams**: create a channel workflow *"Post to a channel when a webhook request is received"*, then:
    ```powershell
-   .venv\Scripts\python scripts/test_teams_webhook.py "<webhook url>"   # check a test card shows up
+   .venv\Scripts\python -m agent.integrations.teams "<webhook url>"   # check a test card shows up
    $env:TEAMS_WEBHOOK_URL = "<webhook url>"
    ```
    If a post fails during the demo, the flow keeps going and the message is saved to `outputs/<request_id>/teams_messages.jsonl` (with `webhook_error`).
-4. **Scenarios**: run `.venv\Scripts\python scripts/run_samples.py` (the 5 scenarios in `tests/scenarios/`) and check 5/5 pass against the current state of the repos. Past requests can be added as YAML in another folder and run with `scripts/run_samples.py <folder>`.
+4. **Past requests** (optional): write 3–5 real past requests as YAML (format in [agent/workflow/evaluate.py](agent/workflow/evaluate.py)) and run `.venv\Scripts\python -m agent.workflow.evaluate <folder>`; read `outputs/eval/<run>/report.md` before the demo so you know where the agent goes wrong.
 5. **Reviewer key**: `$env:REVIEWER_KEY = "<key>"`, given only to whoever plays the Data Team.
 6. Start the app: `.venv\Scripts\python app.py`. Ideally use two browser windows: one as the requester, one as the Data Team.
 

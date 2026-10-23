@@ -40,6 +40,7 @@ cp infrastructure/.env.example infrastructure/.env      # PowerShell: Copy-Item 
 | `TEAMS_WEBHOOK_URL` | Teams Workflows webhook. Empty = messages go to `outputs/<request_id>/teams_messages.jsonl` |
 | `REVIEWER_KEY` | Key for the 🛡 Data Team review tab (approve / request changes). Empty = open to everyone |
 | `WEB_RESEARCH` | `0` turns off web research for sources the platform can't onboard yet |
+| `WITH_BROWSER` | `true` builds the image with headless Chromium for web research (Bing/Brave search, JavaScript-only pages); adds ~400 MB. Needs `up -d --build` |
 | `UI_PORT` | Host port, default `7860` |
 
 Env vars already set in your shell override `.env`, so Codespaces secrets with these names are picked up automatically.
@@ -64,7 +65,7 @@ docker compose -f infrastructure/compose.yaml logs -f        # follow the log
 docker compose -f infrastructure/compose.yaml up -d --build  # after changing code or requirements.txt (code is copied into the image)
 docker compose -f infrastructure/compose.yaml up -d          # after editing .env (restart does not re-read it)
 docker compose -f infrastructure/compose.yaml down           # stop; data in outputs/ is kept
-docker compose -f infrastructure/compose.yaml exec app python scripts/run_samples.py   # run scripts inside the container
+docker compose -f infrastructure/compose.yaml exec app python -m agent.integrations.teams   # send a Teams test card from the container
 ```
 
 ## Where the data lives

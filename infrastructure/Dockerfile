@@ -17,6 +17,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
+# Optional headless Chromium for web research (Bing/Brave search, JavaScript-only pages); adds ~400 MB.
+#   docker compose build --build-arg WITH_BROWSER=true   (or WITH_BROWSER=true in infrastructure/.env)
+ARG WITH_BROWSER=false
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN if [ "$WITH_BROWSER" = "true" ]; then \
+      python -m playwright install --with-deps chromium && chmod -R a+rx /opt/ms-playwright; \
+    fi
+
 COPY --chown=app:app . .
 RUN mkdir -p outputs && chown app:app outputs
 USER app

@@ -95,8 +95,8 @@ The result is **Feasible**, **Feasible with risks**, or **Gap found**.
 
 If the requester accepted such a source, the agent looks up public documentation:
 
-1. Links the requester pasted → links in `doc_links.yaml` → a web search (DuckDuckGo) for the rest, max 3 pages.
-2. Reads them and keeps sentences about history/retention, quotas, auth and access methods.
+1. Links the requester pasted → a web search for the rest, max 3 pages. The search is the agent's port of web-search-mcp: Bing and Brave in a headless browser when one is installed, otherwise DuckDuckGo.
+2. Reads them over HTTP, or in the headless browser when a page needs JavaScript, and keeps sentences about history/retention, quotas, auth and access methods.
 3. Writes **draft source notes** `outputs/<request_id>/source_notes_<source>.yaml` and a list of **questions for the Data Team**.
 
 All of this is marked **unverified** and never changes the feasibility result. Only the source name and fixed keywords are sent to the search engine, never the request text. Turn it off with `WEB_RESEARCH=0`.
@@ -157,4 +157,4 @@ The header pill shows which mode is active. Switch it in **⚙️ Settings → L
 4. Approve it in the review tab, then download the User Story in **💬 Request**.
 5. Try the "CRM segments" and "HR on SQL Server" examples to see a new ingestion job and a new connection.
 
-Scripted runs of these cases: `python scripts/run_samples.py` runs `tests/scenarios/` (see [PHASES.md](PHASES.md#phase-5--teams--demo)).
+To replay past requests as scripted conversations: `python -m agent.workflow.evaluate <folder>` (see [PHASES.md](PHASES.md#phase-5--teams--demo)).

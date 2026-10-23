@@ -49,30 +49,31 @@ Feasibility reads the code of the two platform repos: is the data already a dbt 
 ```
 data-onboarding-agent/
 ├── app.py                     # Web UI (Gradio)
-├── notebooks/prototype.ipynb  # Colab: clone, Ollama, tool-calling test, host model via tunnel
+├── notebooks/
+│   ├── prototype.ipynb        # Colab: clone, Ollama, tool-calling test, host model via tunnel
+│   └── ollama_auth_proxy.py   # API-key proxy in front of Ollama (run by the notebook on Colab)
 ├── agent/
 │   ├── config.py              # paths + env vars
 │   ├── state.py               # TypedDict state + request schema
-│   ├── extraction.py          # field extraction (rule-based) + validation
-│   ├── repos.py               # reads the ingestion + transformation repos (local checkout or GitHub)
-│   ├── knowledge.py           # lookup_source, search_models (over repos.py)
-│   ├── dbt_project.py         # dbt models from schema .yml files or manifest.json
-│   ├── github.py              # GitHub REST: file tree + file content
-│   ├── research.py            # web research for sources the platform can't onboard yet
-│   ├── llm.py                 # Ollama client (optional, supports API key)
-│   ├── graph.py               # build graph, SQLite checkpointer
-│   ├── runner.py              # start/reply API for the UI and scripts
-│   ├── nodes/                 # one file per node
-│   ├── prompts/               # LLM prompts (.md)
-│   └── integrations/teams.py  # Teams webhook (or mock)
-├── scripts/
-│   ├── ollama_auth_proxy.py   # API-key proxy in front of Ollama (runs on Colab)
-│   ├── run_samples.py         # run scenarios / past requests, compare with expectations + team handling
-│   └── test_teams_webhook.py  # send one test card to a Teams webhook
-├── tests/scenarios/           # 5 scripted conversations against what the two repos contain today
+│   ├── workflow/              # the LangGraph flow
+│   │   ├── graph.py           #   build graph, SQLite checkpointer
+│   │   ├── runner.py          #   start/reply API for the UI and scripts
+│   │   ├── extraction.py      #   field extraction (rule-based) + validation
+│   │   ├── evaluate.py        #   run past requests, compare with expectations + team handling
+│   │   └── nodes/             #   one file per node
+│   ├── repos/                 # knowledge from the ingestion + transformation repos (local checkout or GitHub)
+│   │   ├── __init__.py        #   load / get / reload, parse templates, connections, jobs
+│   │   ├── dbt_project.py     #   dbt models from schema .yml files or manifest.json
+│   │   ├── github.py          #   GitHub REST: file tree + file content
+│   │   └── lookup.py          #   lookup_source, search_models
+│   ├── research/              # sources the platform can't onboard yet
+│   │   ├── investigate.py     #   web research: find docs, key passages, questions, draft notes
+│   │   └── websearch/         #   Python port of web-search-mcp: search, page content, MCP server
+│   ├── llm/                   # optional Ollama client (client.py) + prompts/
+│   └── integrations/teams.py  # Teams webhook (or mock); `python -m agent.integrations.teams <url>` sends a test card
 ├── docs/                      # architecture, how it works, phase status
 ├── infrastructure/            # Dockerfile + compose.yaml to run the UI (laptop / VM / Codespaces), see infrastructure/README.md
-├── doc_links.yaml             # official doc links per source, used by web research
+├── requirements.txt           # dependencies (Chromium for the headless browser is a separate, optional download)
 ├── DEMO.md                    # team demo runbook
 └── outputs/                   # results per request_id (gitignored)
 ```
@@ -96,8 +97,7 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 
 .venv\Scripts\python app.py                   # web UI at http://127.0.0.1:7860 (--share for a public link)
-$env:INGESTION_PATH = "..\data-onboarding-ingestion"; $env:TRANSFORMATION_PATH = "..\data-onboarding-transformation"
-.venv\Scripts\python scripts/run_samples.py   # run the 5 scenarios in tests/scenarios
+.venv\Scripts\python -m agent.workflow.evaluate <folder>   # replay past requests (YAML) and compare
 ```
 
 Or activate the venv first (`.venv\Scripts\Activate.ps1`, or `source .venv/bin/activate` on Linux/Mac) and use plain `python`. If PowerShell says running scripts is disabled, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
@@ -111,13 +111,26 @@ Then open http://127.0.0.1:7860. In GitHub Codespaces (Docker is preinstalled), 
 
 For settings (`.env` / Codespaces secrets), where data is stored, port visibility and troubleshooting, see [infrastructure/README.md](infrastructure/README.md).
 
+## Web search and the MCP server
+
+Web research uses [agent/research/websearch/](agent/research/websearch/), a Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): search without API keys (Bing, Brave, DuckDuckGo), then read pages over HTTP or in a headless browser when they need JavaScript.
+
+- **Headless browser (optional):** `python -m playwright install chromium` once (the Playwright package is in `requirements.txt`). Without it, search falls back to DuckDuckGo over HTTP and JavaScript-only pages stay unreadable. Docker: `WITH_BROWSER=true`.
+- **MCP server** with the original's three tools (`full-web-search`, `get-web-search-summaries`, `get-single-web-page-content`), for LM Studio, Claude Desktop or other MCP clients:
+  ```json
+  {"mcpServers": {"web-search": {"command": "python", "args": ["-m", "agent.research.websearch.mcp_server"],
+                                 "cwd": "/path/to/data-onboarding-agent"}}}
+  ```
+
+Key-less search scrapes public search pages, so engines can rate-limit a network for a while; the agent then reports "web search found nothing" and still asks the Data Team its standard questions.
+
 ## Deployment: model on Colab, web app on your machine
 
 ```
  Your machine                                    Google Colab (GPU T4)
 ┌──────────────────────────────┐   HTTPS +    ┌─────────────────────────────────────┐
 │ python app.py (web UI)       │   API key    │ cloudflared tunnel                  │
-│  ├─ ⚙️ LLM settings ──────────┼─────────────▶│  └─ scripts/ollama_auth_proxy.py    │
+│  ├─ ⚙️ LLM settings ──────────┼─────────────▶│  └─ notebooks/ollama_auth_proxy.py  │
 │  ├─ ⚙️ Repositories ─┐        │              │      └─ Ollama (qwen2.5 7B/14B)     │
 │  └─ checkpoint, outputs      │              └─────────────────────────────────────┘
 └─────────────────────┼────────┘
@@ -125,7 +138,7 @@ For settings (`.env` / Codespaces secrets), where data is stored, port visibilit
          ingestion + transformation repos (read on demand)
 ```
 
-Ollama has no authentication, so on Colab `scripts/ollama_auth_proxy.py` sits in front of it: it requires an API key and only allows read/chat APIs (pull/delete are blocked).
+Ollama has no authentication, so on Colab `notebooks/ollama_auth_proxy.py` sits in front of it: it requires an API key and only allows read/chat APIs (pull/delete are blocked).
 
 > ⚠️ Free-tier Colab restricts using the runtime as a web service / accessing it outside the notebook UI. Calling the model from your machine through a tunnel may break the terms and get the session cut off — read the Colab FAQ before using it regularly. Fallbacks: run the web app on Colab too (option B in the notebook), or run Ollama on a machine with a GPU / use an LLM API approved by the company.
 
@@ -176,8 +189,10 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 | `TEAMS_WEBHOOK_URL` | (empty) | Empty = mock, writes to a file |
 | `REVIEWER_KEY` | (empty) | Key for the 🛡 Data Team review tab. Empty = open to everyone |
 | `WEB_RESEARCH` | `1` | `0` = no web research for sources the platform can't onboard yet (questions are still generated) |
-| `DOC_LINKS_PATH` | `./doc_links.yaml` | Known doc links per source |
 | `RESEARCH_MAX_PAGES` | `3` | Pages read per source |
+| `WEBSEARCH_BROWSER` | `auto` | `off` = never use the headless browser, even when Playwright is installed |
+| `RELEVANCE_THRESHOLD`, `ENABLE_RELEVANCE_CHECKING`, `FORCE_MULTI_ENGINE_SEARCH` | `0.3`, `true`, `false` | Search result quality check (same as web-search-mcp) |
+| `MAX_CONTENT_LENGTH`, `DEFAULT_TIMEOUT` | `500000`, `6000` (ms) | Page content limit and fetch timeout |
 
 ## After the prototype
 

@@ -10,8 +10,8 @@ flowchart LR
     DT([Data Team]) -- review tab --> UI
     subgraph App["Web app (app.py, Gradio)"]
         UI[Tabs: Request · Sessions · Data Team review · Settings · Debug]
-        RUN[AgentRunner<br/>agent/runner.py]
-        G[LangGraph graph<br/>agent/graph.py + agent/nodes/]
+        RUN[AgentRunner<br/>agent/workflow/runner.py]
+        G[LangGraph graph<br/>agent/workflow/graph.py + agent/workflow/nodes/]
         UI --> RUN --> G
     end
     G -- read --> ING[(data-onboarding-ingestion<br/>templates · connections · jobs)]
@@ -19,7 +19,7 @@ flowchart LR
     G -- checkpoints --> DB[(SQLite<br/>checkpoints.db)]
     G -- files --> OUT[(outputs/&lt;request_id&gt;/)]
     G -. optional .-> LLM[Ollama LLM<br/>local or Colab tunnel]
-    G -. optional .-> WEB[Public docs on the web<br/>sources the platform can't onboard yet]
+    G -. optional .-> WEB[Public docs on the web<br/>websearch: Bing / Brave / DuckDuckGo]
     G -- webhook or mock file --> T[Teams channel]
 ```
 
@@ -28,15 +28,16 @@ flowchart LR
 | Component | Files | Role |
 |---|---|---|
 | Web UI | [app.py](../app.py) | Gradio app. Shows the chat, step tracker, request card and results. Holds the Data Team review queue. Also has settings for the LLM and the repositories the agent reads |
-| Runner | [agent/runner.py](../agent/runner.py) | Thin API over the graph: `new_request`, `stream`, `reply`, `current_event`, `state`, `threads`. Used by the UI and the scripts |
-| Graph | [agent/graph.py](../agent/graph.py) | Wires the nodes and routing functions; compiles with the SQLite checkpointer |
-| Nodes | [agent/nodes/](../agent/nodes/) | One file per step (see [The graph](#the-graph)) |
+| Runner | [agent/workflow/runner.py](../agent/workflow/runner.py) | Thin API over the graph: `new_request`, `stream`, `reply`, `current_event`, `state`, `threads`. Used by the UI and the scripts |
+| Graph | [agent/workflow/graph.py](../agent/workflow/graph.py) | Wires the nodes and routing functions; compiles with the SQLite checkpointer |
+| Nodes | [agent/workflow/nodes/](../agent/workflow/nodes/) | One file per step (see [The graph](#the-graph)) |
 | State | [agent/state.py](../agent/state.py) | `AgentState` TypedDict, the 7 required request fields, the questions for each field |
-| Extraction | [agent/extraction.py](../agent/extraction.py) | Rule-based field extraction (English + Vietnamese keywords) and validation; LLM extraction when a model is configured |
-| Repositories | [agent/repos.py](../agent/repos.py), [agent/github.py](../agent/github.py), [agent/dbt_project.py](../agent/dbt_project.py) | Read the two repos (local checkout or GitHub) into one cached `Knowledge`: source templates, connections, jobs, dbt models |
-| Knowledge | [agent/knowledge.py](../agent/knowledge.py) | `lookup_source(system)`, `search_models(query)` (token-overlap score) over the repos |
-| Web research | [agent/research.py](../agent/research.py) | For sources the platform can't onboard yet: find and read public docs, draft source notes, list questions for the Data Team |
-| LLM client | [agent/llm.py](../agent/llm.py), [agent/prompts/](../agent/prompts/) | Optional Ollama client (API key support for the Colab proxy); prompts as Markdown files |
+| Extraction | [agent/workflow/extraction.py](../agent/workflow/extraction.py) | Rule-based field extraction (English + Vietnamese keywords) and validation; LLM extraction when a model is configured |
+| Repositories | [agent/repos/__init__.py](../agent/repos/__init__.py), [agent/repos/github.py](../agent/repos/github.py), [agent/repos/dbt_project.py](../agent/repos/dbt_project.py) | Read the two repos (local checkout or GitHub) into one cached `Knowledge`: source templates, connections, jobs, dbt models |
+| Knowledge | [agent/repos/lookup.py](../agent/repos/lookup.py) | `lookup_source(system)`, `search_models(query)` (token-overlap score) over the repos |
+| Web research | [agent/research/investigate.py](../agent/research/investigate.py) | For sources the platform can't onboard yet: find and read public docs, key passages, draft source notes, questions for the Data Team |
+| Web search | [agent/research/websearch/](../agent/research/websearch/) | Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): key-less search (Bing → Brave in an optional headless browser, then DuckDuckGo), page content over HTTP with a headless-browser fallback, and an MCP server (`python -m agent.research.websearch.mcp_server`) with the original's three tools |
+| LLM client | [agent/llm/client.py](../agent/llm/client.py), [agent/llm/prompts/](../agent/llm/prompts/) | Optional Ollama client (API key support for the Colab proxy); prompts as Markdown files |
 | Teams | [agent/integrations/teams.py](../agent/integrations/teams.py) | Adaptive Card to a Workflows webhook; without a URL (or on failure) writes `teams_messages.jsonl` |
 | Config | [agent/config.py](../agent/config.py) | Paths and env vars, including which repos and branches to read |
 | Infrastructure | [infrastructure/](../infrastructure/) | Dockerfile + compose for laptop, VM and Codespaces |
@@ -61,15 +62,15 @@ flowchart TD
 
 | Node | File | What it does | Writes to state |
 |---|---|---|---|
-| `intake` | [intake.py](../agent/nodes/intake.py) | Extracts fields from new user messages, validates them (dates, ETA after today, refresh frequency) and decides what to ask next: missing fields (max 3 per turn) or a gap to resolve | `request`, `missing_fields`, `errors`, `gap`, `accepted_gaps`, `pending_question` |
-| `ask_user` | [intake.py](../agent/nodes/intake.py) | `interrupt()`: pauses the graph until the requester answers | `messages` |
-| `notify` | [notify.py](../agent/nodes/notify.py) | Once per request: writes `request.json`, posts "New data request" to Teams | `thread_ref` |
-| `catalog_check` | [catalog_check.py](../agent/nodes/catalog_check.py) | Searches the dbt models of the transformation repo per source system | `existing_models` |
-| `feasibility` | [feasibility.py](../agent/nodes/feasibility.py) | Per source and table: existing dbt model → landed by an ingestion job → system onboarded (new job) → supported source type (new connection) → otherwise a gap. Flags tight ETAs and snapshot history | `feasibility`, `gap` |
-| `investigate_source` | [investigate.py](../agent/nodes/investigate.py) | Only for sources the platform can't onboard yet: web research and draft source notes (advisory) | `research` |
-| `approval` | [approval.py](../agent/nodes/approval.py) | `interrupt()`: pauses until the Data Team approves or requests changes | `approved`, `review_comment` |
-| `draft_us` | [draft_us.py](../agent/nodes/draft_us.py) | User Story from a fixed template (LLM only writes title/description); writes `feasibility.json`, `user_story.md` | `outputs` |
-| `summary` | [summary.py](../agent/nodes/summary.py) | Writes `summary.md`, posts "Request approved — User Story ready" to Teams | `outputs` |
+| `intake` | [intake.py](../agent/workflow/nodes/intake.py) | Extracts fields from new user messages, validates them (dates, ETA after today, refresh frequency) and decides what to ask next: missing fields (max 3 per turn) or a gap to resolve | `request`, `missing_fields`, `errors`, `gap`, `accepted_gaps`, `pending_question` |
+| `ask_user` | [intake.py](../agent/workflow/nodes/intake.py) | `interrupt()`: pauses the graph until the requester answers | `messages` |
+| `notify` | [notify.py](../agent/workflow/nodes/notify.py) | Once per request: writes `request.json`, posts "New data request" to Teams | `thread_ref` |
+| `catalog_check` | [catalog_check.py](../agent/workflow/nodes/catalog_check.py) | Searches the dbt models of the transformation repo per source system | `existing_models` |
+| `feasibility` | [feasibility.py](../agent/workflow/nodes/feasibility.py) | Per source and table: existing dbt model → landed by an ingestion job → system onboarded (new job) → supported source type (new connection) → otherwise a gap. Flags tight ETAs and snapshot history | `feasibility`, `gap` |
+| `investigate_source` | [investigate.py](../agent/workflow/nodes/investigate.py) | Only for sources the platform can't onboard yet: web research and draft source notes (advisory) | `research` |
+| `approval` | [approval.py](../agent/workflow/nodes/approval.py) | `interrupt()`: pauses until the Data Team approves or requests changes | `approved`, `review_comment` |
+| `draft_us` | [draft_us.py](../agent/workflow/nodes/draft_us.py) | User Story from a fixed template (LLM only writes title/description); writes `feasibility.json`, `user_story.md` | `outputs` |
+| `summary` | [summary.py](../agent/workflow/nodes/summary.py) | Writes `summary.md`, posts "Request approved — User Story ready" to Teams | `outputs` |
 
 ### Interrupts are the hand-off points
 
@@ -115,11 +116,10 @@ One chat session = one LangGraph `thread_id`. Every step is checkpointed in SQLi
 | | `pipelines/connections/*.yaml` | Systems already onboarded (`new_job`); system = system of its jobs, else the first part of the name (`crm-sqlserver-nonprod` → `crm`) |
 | | `pipelines/jobs/*.yaml` | Tables landing in the lake, from `sink.params.path` = `<system>/<schema>/<table>` (`landed`) |
 | data-onboarding-transformation | `models/**/*.yml`, or `target/manifest.json` if committed | dbt models (`existing_model`); system from `meta.source`, `stg_<system>__…` or the folder `models/<layer>/<system>/` |
-| this repo | `doc_links.yaml` | `investigate_source`: official docs to read first |
 
 Each repo is read from a local checkout (`INGESTION_PATH`, `TRANSFORMATION_PATH`) or from GitHub (`*_REPO`, `*_REF`, `GITHUB_TOKEN`), once per process; **⚙️ Settings → Reload repositories** reads them again.
 
-Feasibility has no history dates to compare: ingestion keeps one snapshot per day from its first run (ingestion ADR-0004), so the agent adds a history risk instead of a date-range gap. Lead times per kind of work are rough team estimates in `LEAD_TIME_DAYS` ([feasibility.py](../agent/nodes/feasibility.py)).
+Feasibility has no history dates to compare: ingestion keeps one snapshot per day from its first run (ingestion ADR-0004), so the agent adds a history risk instead of a date-range gap. Lead times per kind of work are rough team estimates in `LEAD_TIME_DAYS` ([feasibility.py](../agent/workflow/nodes/feasibility.py)).
 
 ## Storage
 
@@ -127,7 +127,7 @@ Feasibility has no history dates to compare: ingestion keeps one snapshot per da
 |---|---|---|
 | Sessions (checkpoints) | `CHECKPOINT_DB`, default `./checkpoints.db`; `outputs/checkpoints.db` in Docker | SQLite. PLAN: Postgres after the prototype |
 | Per-request files | `outputs/<request_id>/` | `request.json`, `feasibility.json`, `user_story.md`, `summary.md`, `teams_messages.jsonl`, `source_notes_<source>.yaml` |
-| Evaluation runs | `outputs/eval/<timestamp>/` | `report.md`, `mistakes.csv` from `scripts/run_samples.py` |
+| Evaluation runs | `outputs/eval/<timestamp>/` | `report.md`, `mistakes.csv` from `python -m agent.workflow.evaluate <folder>` |
 
 ## Web UI
 
@@ -154,7 +154,29 @@ While a request waits for review, the Request tab polls every 5 seconds (`gr.Tim
 | GitHub Codespaces | Same compose command (Docker is preinstalled) | Colab via tunnel |
 | Colab only | Notebook option B: app with `share=True` on Colab | Ollama on the Colab GPU |
 
-The Colab-hosted model sits behind [scripts/ollama_auth_proxy.py](../scripts/ollama_auth_proxy.py) (API key, read/chat endpoints only) and a cloudflared tunnel. See the main [README](../README.md#deployment-model-on-colab-web-app-on-your-machine).
+The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks/ollama_auth_proxy.py) (API key, read/chat endpoints only) and a cloudflared tunnel. See the main [README](../README.md#deployment-model-on-colab-web-app-on-your-machine).
+
+## Code layout
+
+`agent/` is grouped by what the code does:
+
+| Folder | Contains |
+|---|---|
+| `agent/` | `config.py` (settings) and `state.py` (request schema, graph state), used everywhere |
+| `agent/workflow/` | The LangGraph flow: `graph.py`, `runner.py`, `extraction.py`, `evaluate.py` (replay past requests) and `nodes/` (one module per step) |
+| `agent/repos/` | Knowledge from the two platform repos: loading, GitHub access, dbt parsing, lookups |
+| `agent/research/` | Web research for sources the platform can't onboard yet, and the `websearch/` port |
+| `agent/llm/` | Optional Ollama client and its prompts |
+| `agent/integrations/` | Teams webhook |
+
+## Web search
+
+[agent/research/websearch/](../agent/research/websearch/) is a Python port of web-search-mcp; its license is in `LICENSE-web-search-mcp`. Each module's docstring lists where it differs from the original. The main differences:
+
+- **Search:** Bing and Brave run only in the optional headless Chromium (Playwright), because over plain HTTP they answer automated clients with generic results or 429. DuckDuckGo runs over HTTP, plus the `ddgs` package as a last fallback. The quality check picks the first good result list.
+- **No evasion:** the browser is a normal Chromium profile. The original's fingerprint spoofing and simulated mouse movement were not ported.
+- **Cleanup:** ad and tracking elements are matched on whole class/id words, and words like "terms" or "privacy" are kept in the text (the original removed them).
+- **Speed:** a search with the browser takes several seconds (one short-lived browser per call). Research reads at most `RESEARCH_MAX_PAGES` pages.
 
 ## Extension points
 
@@ -162,6 +184,6 @@ The Colab-hosted model sits behind [scripts/ollama_auth_proxy.py](../scripts/oll
 |---|---|
 | Support a new source | In data-onboarding-ingestion: a source template (new type), a connection (new system) or a job (new table); the agent picks it up on reload |
 | Add a required field | `REQUIRED_FIELDS` / `FIELD_QUESTIONS` in `state.py`, extraction + validation in `extraction.py`, `FIELD_NAMES` in `app.py`, the User Story template |
-| Add a step | New node in `agent/nodes/`, wire it in `graph.py`, add it to `NODE_STATUS` / `NODE_STEP` in `app.py` |
+| Add a step | New node in `agent/workflow/nodes/`, wire it in `graph.py`, add it to `NODE_STATUS` / `NODE_STEP` in `app.py` |
 | Swap the checkpointer | `get_checkpointer` in `graph.py` (e.g. Postgres); `AgentRunner.threads` reads the SQLite table directly |
 | Create real tickets | After `draft_us`: a node that calls Azure DevOps / Jira (out of scope for the prototype) |

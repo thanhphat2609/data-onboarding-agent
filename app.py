@@ -9,7 +9,7 @@ Tabs:
   and the finished User Story with download buttons. One chat session = one thread_id.
 - Sessions: reopen a recent session (e.g. after a Colab disconnect) from the list or by thread_id.
 - Settings: switch the Ollama host/model/API key at runtime (empty model = rule-based), e.g. a model hosted on
-  Colab behind scripts/ollama_auth_proxy.py; see what was read from the ingestion and transformation repos, and reload them.
+  Colab behind notebooks/ollama_auth_proxy.py; see what was read from the ingestion and transformation repos, and reload them.
 - Debug: raw agent state.
 """
 import argparse
@@ -23,8 +23,9 @@ from pathlib import Path
 import gradio as gr
 from langgraph.types import Command
 
-from agent import config, llm, repos
-from agent.runner import AgentRunner
+from agent import config, repos
+from agent.llm import client as llm
+from agent.workflow.runner import AgentRunner
 from agent.state import REQUIRED_FIELDS
 
 runner = AgentRunner()
