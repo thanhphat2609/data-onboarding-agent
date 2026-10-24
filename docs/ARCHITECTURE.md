@@ -155,7 +155,7 @@ While a request waits for review, the Request tab polls every 5 seconds (`gr.Tim
 | Where | How | Model |
 |---|---|---|
 | Laptop (venv) | `python app.py` | Rule-based, local Ollama, or Colab via tunnel |
-| Docker (laptop / VM) | `docker compose -f infrastructure/docker-compose.yml up -d --build` | Same; host Ollama via `host.docker.internal` |
+| Docker (laptop / VM) | `docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build` | Same; host Ollama via `host.docker.internal` |
 | GitHub Codespaces | Same compose command (Docker is preinstalled) | Colab via tunnel |
 | Colab only | Notebook option B: app with `share=True` on Colab | Ollama on the Colab GPU |
 

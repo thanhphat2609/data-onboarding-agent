@@ -19,9 +19,10 @@ TRANSFORMATION_DBT_DIR = os.getenv("TRANSFORMATION_DBT_DIR", "")
 
 
 # GitHub token that can read both repositories (fine-grained, Contents: Read-only). Not needed with local checkouts.
-# In Codespaces GITHUB_TOKEN is preset to a token for the codespace's own repo only: export your own before starting.
+# PLATFORM_GITHUB_TOKEN wins: in Codespaces GITHUB_TOKEN is preset to a token for the codespace's own repo only,
+# and a Codespaces secret can't be named GITHUB_*.
 def github_token() -> str:
-    return os.getenv("GITHUB_TOKEN", "")
+    return os.getenv("PLATFORM_GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN", "")
 
 
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", ROOT / "outputs"))

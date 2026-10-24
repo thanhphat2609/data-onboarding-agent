@@ -151,7 +151,7 @@ The header pill shows which mode is active. Switch it in **⚙️ Settings → L
 
 ## Try it
 
-1. Start the app: `python app.py`, or `docker compose -f infrastructure/docker-compose.yml up -d --build`.
+1. Start the app: `python app.py`, or `docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`.
 2. In **💬 Request**, click the "Current CRM customers" example and answer the questions.
 3. Open **🛡 Data Team review**, pick the request, and click **Request changes** with `change eta to 2026-12-15`. Then go back to **💬 Request** and watch it update.
 4. Approve it in the review tab, then download the User Story in **💬 Request**.

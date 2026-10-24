@@ -53,7 +53,7 @@ From the Docker host (laptop, VM or Codespace):
 docker exec -it data-onboarding-postgres psql -U agent -d onboarding_agent
 ```
 
-From a desktop client (DBeaver, pgAdmin): host `127.0.0.1`, port `5432` (`POSTGRES_PORT`), database `onboarding_agent`, user `agent`. The password is `POSTGRES_AGENT_PASSWORD` in `infrastructure/.env`, default `agent`. The port is published on localhost only, so on Codespaces forward it from the PORTS tab, and on a VM use an SSH tunnel (`ssh -L 5432:127.0.0.1:5432 user@vm`).
+From a desktop client (DBeaver, pgAdmin): host `127.0.0.1`, port `5432` (`POSTGRES_PORT`), database `onboarding_agent`, user `agent`. The password is `POSTGRES_AGENT_PASSWORD` in `infrastructure/non-prod/.env`, default `agent`. The port is published on localhost only, so on Codespaces forward it from the PORTS tab, and on a VM use an SSH tunnel (`ssh -L 5432:127.0.0.1:5432 user@vm`).
 
 Useful `psql` commands: `\dt` lists tables, `\d sessions` shows columns, `\x auto` makes wide rows readable, `\q` quits.
 
@@ -143,7 +143,7 @@ DELETE FROM sessions          WHERE thread_id = '<thread_id>';
 COMMIT;
 ```
 
-Then delete `outputs/<request_id>/` for the same requests. To wipe everything (sessions **and** Airflow's metadata), `docker compose -f infrastructure/docker-compose.yml down -v`.
+Then delete `outputs/<request_id>/` for the same requests. To wipe everything (sessions **and** Airflow's metadata), `docker compose -f infrastructure/non-prod/docker-compose.yml down -v`.
 
 ## SQLite (laptop, Colab)
 

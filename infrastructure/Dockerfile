@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Image for the web UI. Build context = repo root; normally built through compose:
-#   docker compose -f infrastructure/docker-compose.yml up -d --build
+#   docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
 
 # ─────────────────────────────────────────────
 # Build: install the requirements into a virtualenv
@@ -38,7 +38,7 @@ RUN useradd --create-home --uid 1000 app
 COPY --from=build /opt/venv /opt/venv
 
 # Optional headless Chromium for web research (Bing/Brave search, JavaScript-only pages); adds ~400 MB.
-#   WITH_BROWSER=true in infrastructure/.env, then up -d --build
+#   WITH_BROWSER=true in infrastructure/non-prod/.env, then up -d --build
 ARG WITH_BROWSER=false
 RUN if [ "$WITH_BROWSER" = "true" ]; then \
       python -m playwright install --with-deps chromium && chmod -R a+rx /opt/ms-playwright \

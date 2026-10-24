@@ -73,7 +73,7 @@ data-onboarding-agent/
 │   ├── llm/                   # optional Ollama client (client.py) + prompts/
 │   └── integrations/teams.py  # Teams webhook (or mock); `python -m agent.integrations.teams <url>` sends a test card
 ├── docs/                      # architecture, how it works, phase status
-├── infrastructure/            # Dockerfile + docker-compose.yml to run the UI (laptop / VM / Codespaces), see infrastructure/README.md
+├── infrastructure/            # Dockerfile, non-prod/ compose (laptop / Codespaces), prod/ later (VM 1); see infrastructure/README.md
 ├── requirements.txt           # dependencies (Chromium for the headless browser is a separate, optional download)
 ├── DEMO.md                    # team demo runbook
 └── outputs/                   # results per request_id (gitignored)
@@ -106,7 +106,7 @@ Or activate the venv first (`.venv\Scripts\Activate.ps1`, or `source .venv/bin/a
 ## Run with Docker / GitHub Codespaces
 
 ```bash
-docker compose -f infrastructure/docker-compose.yml up -d --build
+docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
 ```
 Then open http://127.0.0.1:7860. In GitHub Codespaces (Docker is preinstalled), open the forwarded port 7860 from the **PORTS** tab instead.
 
@@ -180,7 +180,8 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 | `OLLAMA_HOST` | `http://localhost:11434` | Local Ollama URL, or the tunnel URL from Colab |
 | `OLLAMA_API_KEY` | (empty) | Key for the proxy on Colab |
 | `OLLAMA_MODEL` | (empty) | e.g. `qwen2.5:7b`. Empty = rule-based |
-| `GITHUB_TOKEN` | (empty) | Fine-grained token, *Contents: Read-only* on both repos. Not needed with local checkouts. In Codespaces, export your own: the preset one only reads the codespace's repo |
+| `GITHUB_TOKEN` | (empty) | Fine-grained token, *Contents: Read-only* on both repos. Not needed with local checkouts |
+| `PLATFORM_GITHUB_TOKEN` | (empty) | Same token under a name that wins over `GITHUB_TOKEN`. Use it in Codespaces, where `GITHUB_TOKEN` is preset for the codespace's own repo and a secret can't be named `GITHUB_*` |
 | `INGESTION_REPO`, `INGESTION_REF` | `thanhphat2609/data-onboarding-ingestion`, `main` | |
 | `TRANSFORMATION_REPO`, `TRANSFORMATION_REF` | `thanhphat2609/data-onboarding-transformation`, `main` | |
 | `INGESTION_PATH`, `TRANSFORMATION_PATH` | (empty) | Local checkouts; win over GitHub |

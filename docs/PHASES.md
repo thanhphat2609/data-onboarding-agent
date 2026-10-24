@@ -86,12 +86,13 @@ To make the source known: add a source template, connection or job for it in dat
 
 ## Added: PostgreSQL + sessions table 🟡 (2026-10-24)
 > Code done; the SQLite path ran end to end locally (ownership and on-behalf rows checked). PostgreSQL and the compose stack are not yet run: test in Codespaces.
-- 🟡 `postgres` service (PostgreSQL 16.15) in [docker-compose.yml](../infrastructure/docker-compose.yml): the platform's one server, databases `onboarding_agent` (this app), `airflow` (Airflow metadata) and `platform` (ingestion run records), one role each, created by [postgres/init/01-databases.sh](../infrastructure/postgres/init/01-databases.sh); shared Docker network `data-platform` for Airflow
+- 🟡 `postgres` service (PostgreSQL 16.15) in [docker-compose.yml](../infrastructure/non-prod/docker-compose.yml): the platform's one server, databases `onboarding_agent` (this app), `airflow` (Airflow metadata) and `platform` (ingestion run records), one role each, created by [postgres/init/01-databases.sh](../infrastructure/postgres/init/01-databases.sh); shared Docker network `data-platform` for Airflow
 - 🟡 `DATABASE_URL` → `PostgresSaver` on a psycopg pool; without it SQLite as before (laptop, Colab)
 - 🟡 `sessions` table ([sessions.py](../agent/workflow/sessions.py)) in the same database: Sessions list, review queue and ownership checks are SQL instead of loading every thread; existing sessions are backfilled on start
 - 🟡 `requested_by` (owner) vs `created_by` (who typed it) vs `reviewed_by`: the Data Team can file a request **on behalf of** a requester
 - ❌ DNS fix with `DNS_1` / `DNS_2` (default 1.1.1.1 / 8.8.8.8), v0.6.0: public resolvers don't answer from a Codespace's Docker. Removed in v0.6.1 (Docker's default DNS again)
 - ✅ Root cause of "DNS lookup of api.github.com failed" and the PostgreSQL `PoolTimeout` in Codespaces, found 2026-10-24: a leftover `iptables-legacy` rule `-P FORWARD DROP` that only lets `docker0` through, so the compose network can reach neither `postgres` nor the internet. Not a code problem. Fix per codespace start: `sudo iptables-legacy -P FORWARD ACCEPT` ([runbook](../infrastructure/README.md#codespaces-containers-cant-reach-each-other-or-the-internet)); then the app reached PostgreSQL and GitHub
+- 🟡 v0.6.1: compose moved to `infrastructure/non-prod/` (same layout as data-onboarding-ingestion; `prod/` once VM 1 exists); `PLATFORM_GITHUB_TOKEN` wins over `GITHUB_TOKEN`, because the Codespaces preset token gave 404 on both repos
 - ⬜ Run in a codespace: `up -d --build`, a full request + approval, then the queries in [POSTGRESQL.md](POSTGRESQL.md)
 
 ## Added: UI redesign + Data Team review ✅ (2026-10-23)
@@ -136,7 +137,7 @@ To make the source known: add a source template, connection or job for it in dat
 
 ## Next steps
 1. Run the notebook on Colab: tool-calling test, pick a model, host the model for the web app.
-2. Build and run the Docker image (`docker compose -f infrastructure/docker-compose.yml up -d --build`), locally or in a codespace, with `GITHUB_TOKEN` set.
+2. Build and run the Docker image (`docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`), locally or in a codespace, with `GITHUB_TOKEN` set.
 3. As the platform grows (more templates, connections, jobs, dbt models), replay a few requests with `python -m agent.workflow.evaluate <folder>` to check the recommendations.
 4. Write 3–5 real past requests as YAML (including `team_handling`), run `python -m agent.workflow.evaluate <folder>`, review `report.md` / `mistakes.csv`.
 5. Hook up the real Teams webhook (`python -m agent.integrations.teams <url>` first).

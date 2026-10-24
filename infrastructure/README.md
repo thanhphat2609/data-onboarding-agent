@@ -1,15 +1,19 @@
 # Infrastructure
 
-The web UI runs in Docker. One `Dockerfile` and one `docker-compose.yml` cover a laptop, a VM and GitHub Codespaces, and the command is the same everywhere.
+The web UI runs in Docker, with the same layout as data-onboarding-ingestion: one folder per environment, sharing the image and the PostgreSQL init script.
 
 ```
 infrastructure/
-├── Dockerfile          # two stages: requirements into a venv, then slim runtime + agent/ + app.py; port 7860
-├── docker-compose.yml  # app (builds the image, port, settings, outputs/) + postgres (sessions, Airflow metadata DB)
-├── postgres/init/      # first-start script: databases onboarding_agent + airflow, one role each
-├── .env.example        # settings template; copy to .env (gitignored)
-└── README.md           # this file
+├── Dockerfile              # two stages: requirements into a venv, then slim runtime + agent/ + app.py; port 7860
+├── postgres/init/          # first-start script: databases onboarding_agent, airflow, platform; one role each
+├── non-prod/               # laptop and GitHub Codespaces (this README)
+│   ├── docker-compose.yml  #   app (builds the image, port, settings, outputs/) + postgres
+│   └── .env.example        #   settings template; copy to non-prod/.env (gitignored)
+├── prod/                   # VM 1 (Agent + Airflow + Flink JobManager): written once the VM exists
+└── README.md               # this file
 ```
+
+Prod will differ from non-prod in what it enforces: required passwords and `ACCOUNTS` (`${…:?}`), a pinned image tag instead of `build:`, and backups of the `pgdata` volume.
 
 ```
  Browser                Docker host (laptop / VM / codespace)                Google Colab (GPU), optional
@@ -25,10 +29,10 @@ infrastructure/
 ## Open the UI
 
 ### 1. (Optional) Settings
-All settings are optional. Without them the agent runs rule-based, Teams messages are written to `outputs/`, and you can type the model host and API key straight into the Settings tab. Only `GITHUB_TOKEN` is needed in practice: without it the agent can't read the two private platform repos.
+All settings are optional. Without them the agent runs rule-based, Teams messages are written to `outputs/`, and you can type the model host and API key straight into the Settings tab. In practice you need a GitHub token (the agent can't read the two private platform repos without it) and `ACCOUNTS` if you want the login page.
 
 ```bash
-cp infrastructure/.env.example infrastructure/.env      # PowerShell: Copy-Item infrastructure/.env.example infrastructure/.env
+cp infrastructure/non-prod/.env.example infrastructure/non-prod/.env      # PowerShell: Copy-Item infrastructure/non-prod/.env.example infrastructure/non-prod/.env
 ```
 
 | Variable | Value |
@@ -36,7 +40,7 @@ cp infrastructure/.env.example infrastructure/.env      # PowerShell: Copy-Item 
 | `OLLAMA_HOST` | Tunnel URL from the Colab notebook, step 4 (`https://xxxx.trycloudflare.com`). Empty = Ollama on the host machine |
 | `OLLAMA_API_KEY` | API key printed by the same Colab cell |
 | `OLLAMA_MODEL` | e.g. `qwen2.5:7b`. Empty = rule-based |
-| `GITHUB_TOKEN` | Fine-grained token, **Contents: Read-only** on data-onboarding-ingestion and data-onboarding-transformation; the agent reads both |
+| `PLATFORM_GITHUB_TOKEN` (or `GITHUB_TOKEN`) | Fine-grained token, **Contents: Read-only** on data-onboarding-ingestion and data-onboarding-transformation; the agent reads both. `PLATFORM_GITHUB_TOKEN` wins; use it in Codespaces (see below) |
 | `INGESTION_REPO` / `INGESTION_REF`, `TRANSFORMATION_REPO` / `TRANSFORMATION_REF` | Other repos or branches to read (defaults: the two platform repos, `main`) |
 | `TEAMS_WEBHOOK_URL` | Teams Workflows webhook. Empty = messages go to `outputs/<request_id>/teams_messages.jsonl` |
 | `ACCOUNTS` | Web UI logins, `user:password` pairs separated by commas. Empty = no login, everyone sees every tab |
@@ -47,12 +51,13 @@ cp infrastructure/.env.example infrastructure/.env      # PowerShell: Copy-Item 
 | `POSTGRES_PASSWORD`, `POSTGRES_AGENT_PASSWORD`, `POSTGRES_AIRFLOW_PASSWORD`, `POSTGRES_PLATFORM_PASSWORD` | Passwords of the `postgres` superuser and the `agent`, `airflow` and `platform` roles (defaults: the role name; the port is localhost-only). Read **only on the first start**, when the `pgdata` volume is empty. Use URL-safe characters. The ingestion repo's `.env` repeats the last two as `AIRFLOW_DB_PASSWORD` / `PLATFORM_DB_PASSWORD` |
 | `POSTGRES_PORT` | Host port of PostgreSQL, default `5432` |
 | `DATABASE_URL` | Override to use an external PostgreSQL instead of the `postgres` container |
-Env vars already set in your shell override `.env`, so Codespaces secrets with these names are picked up automatically.
+
+Env vars already set in your shell override `.env`, so Codespaces secrets with these names are picked up automatically. After editing `.env`, run `up -d` (a `restart` doesn't re-read it).
 
 ### 2. Start
 From the repo root:
 ```bash
-docker compose -f infrastructure/docker-compose.yml up -d --build
+docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
 ```
 The first build takes a few minutes. After that, open:
 
@@ -64,13 +69,13 @@ From there, everything works as in the main README: the **⚙️ Settings** tab 
 
 ### 3. Day-to-day commands
 ```bash
-docker compose -f infrastructure/docker-compose.yml ps             # running? healthy?
-docker compose -f infrastructure/docker-compose.yml logs -f        # follow the log
-docker compose -f infrastructure/docker-compose.yml up -d --build  # after changing code or requirements.txt (code is copied into the image)
-docker compose -f infrastructure/docker-compose.yml up -d          # after editing .env (restart does not re-read it)
-docker compose -f infrastructure/docker-compose.yml down           # stop; outputs/ and the pgdata volume are kept
-docker compose -f infrastructure/docker-compose.yml exec postgres psql -U agent -d onboarding_agent   # query sessions (docs/POSTGRESQL.md)
-docker compose -f infrastructure/docker-compose.yml exec app python -m agent.integrations.teams   # send a Teams test card from the container
+docker compose -f infrastructure/non-prod/docker-compose.yml ps             # running? healthy?
+docker compose -f infrastructure/non-prod/docker-compose.yml logs -f        # follow the log
+docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build  # after changing code or requirements.txt (code is copied into the image)
+docker compose -f infrastructure/non-prod/docker-compose.yml up -d          # after editing .env (restart does not re-read it)
+docker compose -f infrastructure/non-prod/docker-compose.yml down           # stop; outputs/ and the pgdata volume are kept
+docker compose -f infrastructure/non-prod/docker-compose.yml exec postgres psql -U agent -d onboarding_agent   # query sessions (docs/POSTGRESQL.md)
+docker compose -f infrastructure/non-prod/docker-compose.yml exec app python -m agent.integrations.teams   # send a Teams test card from the container
 ```
 
 ## Where the data lives
@@ -91,10 +96,10 @@ The init script ([postgres/init/01-databases.sh](postgres/init/01-databases.sh))
 ## GitHub Codespaces notes
 
 - **Docker is already there.** The default Codespaces image includes Docker, so no extra setup is needed. Open the codespace and run the command from step 2.
-- **Secrets:** add the variables above under **GitHub → Settings → Codespaces → Secrets** and give them access to this repo, or use `infrastructure/.env`. `GITHUB_TOKEN` is special in Codespaces: the codespace presets its own, which can only read the repo it was opened from, and a shell variable wins over `.env`. Run `export GITHUB_TOKEN=<your token>` in the terminal before `docker compose up`.
+- **Secrets:** add the variables above under **GitHub → Settings → Codespaces → Secrets** and give them access to this repo, or use `infrastructure/non-prod/.env`. `GITHUB_TOKEN` is special in Codespaces: the codespace presets its own, which can only read the repo it was opened from (so both platform repos give 404), it wins over `.env`, and GitHub doesn't allow a secret named `GITHUB_*`. Add your token as the Codespaces secret **`PLATFORM_GITHUB_TOKEN`** instead; the agent prefers it. Secrets and `ACCOUNTS` reach a running codespace only after it restarts (or `export` them in the terminal, then `up -d`).
 - **Who can open the URL:** the port is **Private** by default, so only you, signed in to GitHub, can open it. Keep it that way: the app's own login (`ACCOUNTS`) is a prototype's, with plain-text passwords and no rate limit. For a team demo, right-click the port → **Port visibility → Private to Organization**. Avoid **Public**.
 - **Persistence:** `outputs/` is under `/workspaces`, so they survive stopping the codespace but **are lost when the codespace is deleted**. Inactive codespaces are deleted after 30 days by default. Copy any `outputs/` you need, since that folder is gitignored.
-- **Restarts:** after the codespace is stopped and reopened, run `docker compose -f infrastructure/docker-compose.yml up -d` again if the UI isn't in PORTS.
+- **Restarts:** after the codespace is stopped and reopened, run `docker compose -f infrastructure/non-prod/docker-compose.yml up -d` again if the UI isn't in PORTS.
 - **Container networking can be blocked (check once per codespace start).** Some codespaces load two firewalls at once: Docker 29 writes its rules to `nf_tables`, while old `iptables-legacy` rules with `-P FORWARD DROP` only let the default `docker0` bridge through. The compose network is a separate bridge, so its traffic is dropped. Symptoms: the app restarts with `PoolTimeout` / `connection timeout expired` (it can't reach `postgres`), and "DNS lookup of api.github.com failed". See [Codespaces: containers can't reach each other or the internet](#codespaces-containers-cant-reach-each-other-or-the-internet).
 
 ### Codespaces: containers can't reach each other or the internet
@@ -116,8 +121,8 @@ sudo iptables-legacy -S FORWARD           # "-P FORWARD DROP" and rules for dock
 ```bash
 sudo iptables-legacy -P FORWARD ACCEPT
 docker run --rm --network data-onboarding-agent_default alpine nc -zv -w 3 postgres 5432         # "open"
-docker compose -f infrastructure/docker-compose.yml restart app
-docker compose -f infrastructure/docker-compose.yml logs app --tail 15                           # "Running on local URL"
+docker compose -f infrastructure/non-prod/docker-compose.yml restart app
+docker compose -f infrastructure/non-prod/docker-compose.yml logs app --tail 15                           # "Running on local URL"
 ```
 
 The rule may come back after the codespace restarts (not yet checked), so repeat step 2 if the symptoms return. Don't work around it with hard-coded DNS servers in compose: public resolvers (1.1.1.1 / 8.8.8.8) don't answer from a codespace, and the database connection would still be blocked.
@@ -135,14 +140,15 @@ The port is published on **127.0.0.1 only** because the app's login is only a pr
 
 | Symptom | Fix |
 |---|---|
-| Container keeps restarting / `unhealthy` | `docker compose -f infrastructure/docker-compose.yml logs app` |
-| Codespaces: port 7860 not in PORTS | Check with `docker compose -f infrastructure/docker-compose.yml ps`. If it's running, add it by hand: PORTS → **Forward a Port** → `7860` |
+| Container keeps restarting / `unhealthy` | `docker compose -f infrastructure/non-prod/docker-compose.yml logs app` |
+| Codespaces: port 7860 not in PORTS | Check with `docker compose -f infrastructure/non-prod/docker-compose.yml ps`. If it's running, add it by hand: PORTS → **Forward a Port** → `7860` |
 | Linux / VM: `Permission denied` writing `outputs/` | The container runs as uid 1000. Run `sudo chown -R 1000:1000 outputs` |
 | `Fetch models` fails | The Colab tab is closed or the tunnel URL changed. Re-run notebook step 4. For host Ollama, use `host.docker.internal`, not `localhost` |
-| Settings → Repositories: "DNS lookup of api.github.com failed" | The container can't reach the network; the token is not the problem. In Codespaces this is the legacy firewall rule: [fix](#codespaces-containers-cant-reach-each-other-or-the-internet). Elsewhere, compare `docker compose -f infrastructure/docker-compose.yml exec app python -c "import socket; print(socket.gethostbyname('api.github.com'))"` with `getent hosts api.github.com` on the host. The agent retries a failed load by itself after 60 s |
-| App restarts with `PoolTimeout` / `ConnectionTimeout: connection timeout expired` | The app can't reach `postgres` over the Docker network. Codespaces: [same legacy firewall fix](#codespaces-containers-cant-reach-each-other-or-the-internet). Elsewhere: `docker compose -f infrastructure/docker-compose.yml logs postgres` |
-| `app` waits forever / `dependency failed to start: container data-onboarding-postgres is unhealthy` | `docker compose -f infrastructure/docker-compose.yml logs postgres`. An init-script error (e.g. `$'\r': command not found` = the script was checked out with Windows line endings) means the databases weren't created. Fix it, then `down -v` (**deletes the database**) and `up -d` |
+| Settings → Repositories: "DNS lookup of api.github.com failed" | The container can't reach the network; the token is not the problem. In Codespaces this is the legacy firewall rule: [fix](#codespaces-containers-cant-reach-each-other-or-the-internet). Elsewhere, compare `docker compose -f infrastructure/non-prod/docker-compose.yml exec app python -c "import socket; print(socket.gethostbyname('api.github.com'))"` with `getent hosts api.github.com` on the host. The agent retries a failed load by itself after 60 s |
+| App restarts with `PoolTimeout` / `ConnectionTimeout: connection timeout expired` | The app can't reach `postgres` over the Docker network. Codespaces: [same legacy firewall fix](#codespaces-containers-cant-reach-each-other-or-the-internet). Elsewhere: `docker compose -f infrastructure/non-prod/docker-compose.yml logs postgres` |
+| `app` waits forever / `dependency failed to start: container data-onboarding-postgres is unhealthy` | `docker compose -f infrastructure/non-prod/docker-compose.yml logs postgres`. An init-script error (e.g. `$'\r': command not found` = the script was checked out with Windows line endings) means the databases weren't created. Fix it, then `down -v` (**deletes the database**) and `up -d` |
 | `network data-platform was found but has incorrect label` | The ingestion repo's `bootstrap.sh` created the network first (standalone mode). Stop the ingestion stack, `docker network rm data-platform`, start this stack, then the ingestion stack |
 | `password authentication failed for user "agent"` | The passwords in `.env` changed after the first start; the volume keeps the old ones. `ALTER ROLE agent PASSWORD '…'` as `postgres`, or `down -v` on a throwaway setup |
-| Header pill "Repos not readable" / 404 in Settings → Repositories | `GITHUB_TOKEN` is missing or can't read one of the repos (in Codespaces: the preset token). Export a token with read access to both, then `up -d` |
+| Header pill "Repos not readable" / 404 in Settings → Repositories | The token is missing or can't read one of the repos. In Codespaces it's the preset `GITHUB_TOKEN`: set `PLATFORM_GITHUB_TOKEN` (secret, `.env` or `export`), then `up -d` |
+| No login page, every tab open | `ACCOUNTS` is empty. Set it in `infrastructure/non-prod/.env` (or as a Codespaces secret), then `up -d` |
 | `port is already allocated` | Something else uses 7860. Set `UI_PORT=7861` in `.env` and open that port instead |

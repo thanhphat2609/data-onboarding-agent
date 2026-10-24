@@ -1,8 +1,8 @@
-# Docker Compose for data-onboarding-agent: the web UI + PostgreSQL on a laptop, a VM or GitHub Codespaces.
-# From the repo root:
-#   docker compose -f infrastructure/docker-compose.yml up -d --build
+# Non-prod Docker Compose for data-onboarding-agent: the web UI + PostgreSQL on a laptop or GitHub Codespaces.
+# (Prod on VM 1 gets infrastructure/prod/ once the VM exists.) From the repo root:
+#   docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
 #   -> http://127.0.0.1:7860   (Codespaces: PORTS tab)
-# Settings come from shell env vars (e.g. Codespaces secrets) or infrastructure/.env (copy .env.example).
+# Settings come from shell env vars (e.g. Codespaces secrets) or infrastructure/non-prod/.env (copy .env.example).
 name: data-onboarding-agent
 
 services:
@@ -25,7 +25,7 @@ services:
       PLATFORM_DB_PASSWORD: ${POSTGRES_PLATFORM_PASSWORD:-platform}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+      - ../postgres/init:/docker-entrypoint-initdb.d:ro
     # Localhost only: psql / DBeaver from the host (docs/POSTGRESQL.md). Airflow joins the network instead.
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
@@ -49,7 +49,7 @@ services:
   # ─────────────────────────────────────────────
   app:
     build:
-      context: ..
+      context: ../..
       dockerfile: infrastructure/Dockerfile
       args:
         WITH_BROWSER: ${WITH_BROWSER:-false}   # true = headless Chromium for web research (~400 MB)
@@ -63,7 +63,9 @@ services:
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-}
-      # The two repos the agent reads (agent/repos); GITHUB_TOKEN must be able to read both.
+      # The two repos the agent reads (agent/repos); the token must be able to read both. PLATFORM_GITHUB_TOKEN wins:
+      # Codespaces presets GITHUB_TOKEN (own repo only) and doesn't allow a secret named GITHUB_*.
+      PLATFORM_GITHUB_TOKEN: ${PLATFORM_GITHUB_TOKEN:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       INGESTION_REPO: ${INGESTION_REPO:-thanhphat2609/data-onboarding-ingestion}
       INGESTION_REF: ${INGESTION_REF:-main}
@@ -79,7 +81,7 @@ services:
       # a password with special characters must be URL-encoded here.
       DATABASE_URL: ${DATABASE_URL:-postgresql://agent:${POSTGRES_AGENT_PASSWORD:-agent}@postgres:5432/onboarding_agent}
     volumes:
-      - ../outputs:/app/outputs   # user stories, feasibility, Teams messages, eval reports
+      - ../../outputs:/app/outputs   # user stories, feasibility, Teams messages, eval reports
     depends_on:
       postgres:
         condition: service_healthy
