@@ -1,11 +1,55 @@
-# Docker Compose for data-onboarding-agent: the web UI on a laptop, a VM or GitHub Codespaces.
+# Docker Compose for data-onboarding-agent: the web UI + PostgreSQL on a laptop, a VM or GitHub Codespaces.
 # From the repo root:
 #   docker compose -f infrastructure/docker-compose.yml up -d --build
 #   -> http://127.0.0.1:7860   (Codespaces: PORTS tab)
 # Settings come from shell env vars (e.g. Codespaces secrets) or infrastructure/.env (copy .env.example).
 name: data-onboarding-agent
 
+# Upstream DNS for the containers. Docker's default resolver sometimes can't resolve public names in
+# Docker-in-Docker (GitHub Codespaces: "DNS lookup of api.github.com failed"). Service names (postgres) still
+# resolve through Docker's own DNS. On a network that blocks public DNS, set DNS_1 / DNS_2 to its resolvers.
+x-dns: &dns
+  - ${DNS_1:-1.1.1.1}
+  - ${DNS_2:-8.8.8.8}
+
 services:
+  # ─────────────────────────────────────────────
+  # PostgreSQL: the platform's one server, one database per owner (postgres/init/01-databases.sh)
+  #   onboarding_agent  this app's sessions
+  #   airflow           Airflow metadata DB      } data-onboarding-ingestion: its Airflow joins the
+  #   platform          ingestion run records    } data-platform network and connects to postgres:5432
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16.15-alpine   # same pin as data-onboarding-ingestion (its architecture: PostgreSQL 16)
+    container_name: data-onboarding-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      # Read by the init script on the first start only (empty volume). The ingestion repo's .env must use the
+      # same values as AIRFLOW_DB_PASSWORD / PLATFORM_DB_PASSWORD.
+      AGENT_DB_PASSWORD: ${POSTGRES_AGENT_PASSWORD:-agent}
+      AIRFLOW_DB_PASSWORD: ${POSTGRES_AIRFLOW_PASSWORD:-airflow}
+      PLATFORM_DB_PASSWORD: ${POSTGRES_PLATFORM_PASSWORD:-platform}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    # Localhost only: psql / DBeaver from the host (docs/POSTGRESQL.md). Airflow joins the network instead.
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    networks: [default, platform]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d onboarding_agent"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+
   # ─────────────────────────────────────────────
   # Web UI + agent (Gradio)
   # ─────────────────────────────────────────────
@@ -37,10 +81,15 @@ services:
       TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
       WEB_RESEARCH: ${WEB_RESEARCH:-1}
       WEBSEARCH_BROWSER: ${WEBSEARCH_BROWSER:-auto}
-      # Sessions live next to the other results, so everything the app writes is in outputs/ on the host.
-      CHECKPOINT_DB: /app/outputs/checkpoints.db
+      # Sessions (checkpoints + sessions table) in PostgreSQL. Point DATABASE_URL elsewhere for an external server;
+      # a password with special characters must be URL-encoded here.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://agent:${POSTGRES_AGENT_PASSWORD:-agent}@postgres:5432/onboarding_agent}
     volumes:
-      - ../outputs:/app/outputs   # checkpoints.db, user stories, feasibility, eval reports
+      - ../outputs:/app/outputs   # user stories, feasibility, Teams messages, eval reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+    dns: *dns
     # Lets OLLAMA_HOST=http://host.docker.internal:11434 reach Ollama on the host (needed on Linux).
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -57,3 +106,13 @@ services:
         max-size: "10m"
         max-file: "3"
     restart: unless-stopped
+
+networks:
+  default: {}
+  # Shared with data-onboarding-ingestion: its Airflow reaches this server as postgres:5432 on this network,
+  # so start this stack first (the ingestion compose declares it external).
+  platform:
+    name: data-platform
+
+volumes:
+  pgdata:   # PostgreSQL data; survives `down`, deleted by `down -v`

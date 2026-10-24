@@ -27,7 +27,10 @@ def github_token() -> str:
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", ROOT / "outputs"))
 PROMPT_DIR = ROOT / "agent" / "llm" / "prompts"
 
-# On Colab: CHECKPOINT_DB=/content/drive/MyDrive/data-onboarding-agent/checkpoints.db
+# Where sessions are saved (LangGraph checkpoints + the sessions table, agent/workflow/sessions.py):
+# - DATABASE_URL set: PostgreSQL, e.g. postgresql://agent:<password>@postgres:5432/onboarding_agent (Docker compose)
+# - otherwise SQLite at CHECKPOINT_DB. On Colab: CHECKPOINT_DB=/content/drive/MyDrive/data-onboarding-agent/checkpoints.db
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 CHECKPOINT_DB = os.getenv("CHECKPOINT_DB", str(ROOT / "checkpoints.db"))
 
 # LLM: leave OLLAMA_MODEL empty to run rule-based (no GPU needed). Can also be changed at runtime from the web UI.

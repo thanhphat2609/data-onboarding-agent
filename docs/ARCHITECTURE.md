@@ -16,7 +16,8 @@ flowchart LR
     end
     G -- read --> ING[(data-onboarding-ingestion<br/>templates · connections · jobs)]
     G -- read --> TRF[(data-onboarding-transformation<br/>dbt models)]
-    G -- checkpoints --> DB[(SQLite<br/>checkpoints.db)]
+    G -- checkpoints --> DB[(PostgreSQL onboarding_agent<br/>or SQLite checkpoints.db)]
+    RUN -- sessions table --> DB
     G -- files --> OUT[(outputs/&lt;request_id&gt;/)]
     G -. optional .-> LLM[Ollama LLM<br/>local or Colab tunnel]
     G -. optional .-> WEB[Public docs on the web<br/>websearch: Bing / Brave / DuckDuckGo]
@@ -28,8 +29,9 @@ flowchart LR
 | Component | Files | Role |
 |---|---|---|
 | Web UI | [app.py](../app.py) | Gradio app. Shows the chat, step tracker, request card and results. Holds the Data Team review queue. Also has settings for the LLM and the repositories the agent reads |
-| Runner | [agent/workflow/runner.py](../agent/workflow/runner.py) | Thin API over the graph: `new_request`, `stream`, `reply`, `current_event`, `state`, `threads`. Used by the UI and the scripts |
-| Graph | [agent/workflow/graph.py](../agent/workflow/graph.py) | Wires the nodes and routing functions; compiles with the SQLite checkpointer |
+| Runner | [agent/workflow/runner.py](../agent/workflow/runner.py) | Thin API over the graph: `new_request`, `stream`, `reply`, `current_event`, `state`, `threads`. Keeps the sessions table current after every run. Used by the UI and the scripts |
+| Sessions | [agent/workflow/sessions.py](../agent/workflow/sessions.py) | `SessionStore`: one row per thread_id (owner, who typed it, status, reviewer) in the checkpointer's database, so lists and ownership checks are plain SQL |
+| Graph | [agent/workflow/graph.py](../agent/workflow/graph.py) | Wires the nodes and routing functions; compiles with the PostgreSQL checkpointer (`DATABASE_URL`) or SQLite |
 | Nodes | [agent/workflow/nodes/](../agent/workflow/nodes/) | One file per step (see [The graph](#the-graph)) |
 | State | [agent/state.py](../agent/state.py) | `AgentState` TypedDict, the 7 required request fields, the questions for each field |
 | Extraction | [agent/workflow/extraction.py](../agent/workflow/extraction.py) | Rule-based field extraction (English + Vietnamese keywords) and validation; LLM extraction when a model is configured |
@@ -97,7 +99,7 @@ The graph stops in exactly two places, both with LangGraph's `interrupt()`:
 | `approved`, `review_comment` | The Data Team's decision |
 | `outputs` | Paths of the generated files and the User Story title |
 
-One chat session = one LangGraph `thread_id`. Every step is checkpointed in SQLite, so a session survives restarts and can be reopened from the **Sessions** tab.
+One chat session = one LangGraph `thread_id`. Every step is checkpointed (PostgreSQL in Docker, SQLite otherwise), so a session survives restarts and can be reopened from the **Sessions** tab.
 
 ## Design rules
 
@@ -125,7 +127,8 @@ Feasibility has no history dates to compare: ingestion keeps one snapshot per da
 
 | What | Where | Notes |
 |---|---|---|
-| Sessions (checkpoints) | `CHECKPOINT_DB`, default `./checkpoints.db`; `outputs/checkpoints.db` in Docker | SQLite. PLAN: Postgres after the prototype |
+| Sessions (checkpoints + `sessions` table) | `DATABASE_URL` set: PostgreSQL, database `onboarding_agent` (Docker compose). Otherwise SQLite at `CHECKPOINT_DB`, default `./checkpoints.db` (laptop, Colab) | Layout and queries: [POSTGRESQL.md](POSTGRESQL.md). Sessions from before the table existed get their row on the next start |
+| Airflow metadata, ingestion run records | PostgreSQL, databases `airflow` and `platform` on the same server | Owned by data-onboarding-ingestion (its ADR-0011); the agent never reads them |
 | Per-request files | `outputs/<request_id>/` | `request.json`, `feasibility.json`, `user_story.md`, `summary.md`, `teams_messages.jsonl`, `source_notes_<source>.yaml` |
 | Evaluation runs | `outputs/eval/<timestamp>/` | `report.md`, `mistakes.csv` from `python -m agent.workflow.evaluate <folder>` |
 
@@ -136,14 +139,14 @@ The UI keeps no state of its own beyond the current `thread_id`: every panel is 
 | Tab | For | What it does |
 |---|---|---|
 | 💬 Request | Requester | Chat with example prompts. A step tracker (Describe → Details → Feasibility → Review → User Story), a live "Your request" card, a read-only "Waiting for Data Team review" panel, and the finished User Story with downloads |
-| 🗂 Sessions | Everyone | Reopen a recent session (from the checkpointer) or one pasted by `thread_id`. Requesters only see and open their own |
+| 🗂 Sessions | Everyone | Reopen a recent session (from the `sessions` table) or one pasted by `thread_id`. Requesters only see and open their own |
 | 🛡 Data Team review | Data Team | Queue of requests waiting for approval; request card + feasibility; **Approve** / **Request changes** |
 | ⚙️ Settings | Data Team | LLM host/model/API key at runtime; what was read from the two repos, reload |
 | 🔧 Debug | Data Team | Raw state JSON |
 
 While a request waits for review, the Request tab polls every 5 seconds (`gr.Timer`). It compares a fingerprint of the thread (message count + event type) and re-renders when the Data Team's decision lands.
 
-**Login and roles** ([agent/auth.py](../agent/auth.py)). With `ACCOUNTS` (or `ACCOUNTS_FILE`) set, Gradio shows a login page (`launch(auth=...)`). Accounts listed in `DATA_TEAM` see every tab; every other account is a requester and sees only Request and Sessions. Each request stores its owner (`requested_by`, the login), and Sessions shows a requester only their own threads; opening someone else's `thread_id` reads as "not found". Hiding a tab is not enough on its own, because hidden components can still be called, so the review and Settings handlers also check the role (`_require_data_team`). Without accounts there is no login and everyone has full access (local development).
+**Login and roles** ([agent/auth.py](../agent/auth.py)). With `ACCOUNTS` (or `ACCOUNTS_FILE`) set, Gradio shows a login page (`launch(auth=...)`). Accounts listed in `DATA_TEAM` see every tab; every other account is a requester and sees only Request and Sessions. Each request stores its owner (`requested_by`) and the login that typed it (`created_by`). They differ when a Data Team member files a request **on behalf of** a requester (field under the request card). Sessions shows a requester the threads where they are either one; opening someone else's `thread_id` reads as "not found". Hiding a tab is not enough on its own, because hidden components can still be called, so the review and Settings handlers also check the role (`_require_data_team`). Without accounts there is no login and everyone has full access (local development).
 
 > Passwords are compared in plain text from env/secret and the session cookie is Gradio's own. That is fine for a team prototype behind a private port, not for the internet (see [infrastructure/README.md](../infrastructure/README.md)).
 
@@ -187,5 +190,5 @@ The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks
 | Support a new source | In data-onboarding-ingestion: a source template (new type), a connection (new system) or a job (new table); the agent picks it up on reload |
 | Add a required field | `REQUIRED_FIELDS` / `FIELD_QUESTIONS` in `state.py`, extraction + validation in `extraction.py`, `FIELD_NAMES` in `app.py`, the User Story template |
 | Add a step | New node in `agent/workflow/nodes/`, wire it in `graph.py`, add it to `NODE_STATUS` / `NODE_STEP` in `app.py` |
-| Swap the checkpointer | `get_checkpointer` in `graph.py` (e.g. Postgres); `AgentRunner.threads` reads the SQLite table directly |
+| Swap the checkpointer | `get_checkpointer` in `graph.py`; `_session_store` in `runner.py` puts the sessions table in the same database |
 | Create real tickets | After `draft_us`: a node that calls Azure DevOps / Jira (out of scope for the prototype) |

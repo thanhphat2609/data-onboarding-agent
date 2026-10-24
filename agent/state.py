@@ -37,7 +37,8 @@ class Request(TypedDict, total=False):
 
 class AgentState(TypedDict, total=False):
     request_id: str
-    requested_by: str  # login of the requester ("" when the web UI has no login)
+    requested_by: str  # business owner of the request: a login ("" when the web UI has no login)
+    created_by: str  # login that typed it; differs from requested_by when the Data Team files it on someone's behalf
     today: str  # lets old requests be replayed with a simulated "today"
     messages: Annotated[list[dict], operator.add]  # {"role": "user"|"assistant", "content": str}
     n_processed: int  # number of messages already processed by intake

@@ -49,8 +49,22 @@ def _require_data_team(request: gr.Request):
 
 
 def _owns(thread_id: str, request: gr.Request) -> bool:
+    """Data Team: every session. Requester: sessions they requested, or typed themselves."""
     user = _user(request)
-    return auth.is_data_team(user) or (runner.state(thread_id) or {}).get("requested_by") == user
+    if auth.is_data_team(user):
+        return True
+    row = runner.sessions.get(thread_id) or {}
+    return user in (row.get("requested_by"), row.get("created_by"))
+
+
+def _on_behalf_of(value: str, user: str) -> str:
+    """Requester a Data Team member files a new request for; "" = the request is their own."""
+    value = (value or "").strip().lower()
+    if not value or value == user or not auth.is_data_team(user):
+        return ""
+    if auth.enabled() and value not in auth.accounts():
+        gr.Warning(f"{value} has no account yet: they'll see this session once they get one.")
+    return value
 
 
 # ---------- HTML helpers ----------
@@ -375,7 +389,7 @@ def _run(thread_id: str, graph_input, history: list):
     yield _view(thread_id, history + [done] + _reply(ev, runner.state(thread_id)), ev)
 
 
-def on_send(message: str, thread_id: str, history: list, request: gr.Request):
+def on_send(message: str, thread_id: str, history: list, on_behalf: str, request: gr.Request):
     message = (message or "").strip()
     if not message:
         yield SKIP
@@ -388,7 +402,8 @@ def on_send(message: str, thread_id: str, history: list, request: gr.Request):
         yield from _followup(message, thread_id, history)
         return
     else:
-        thread_id, graph_input = runner.new_request(message, user=_user(request))
+        user = _user(request)
+        thread_id, graph_input = runner.new_request(message, user=user, on_behalf_of=_on_behalf_of(on_behalf, user))
     yield from _run(thread_id, graph_input, history)
 
 
@@ -412,9 +427,9 @@ def _followup(message: str, thread_id: str, history: list):
     yield _view(thread_id, history + [{"role": "assistant", "content": reply}])
 
 
-def on_example(evt: gr.SelectData, thread_id: str, history: list, request: gr.Request):
+def on_example(evt: gr.SelectData, thread_id: str, history: list, on_behalf: str, request: gr.Request):
     text = evt.value.get("text", "") if isinstance(evt.value, dict) else str(evt.value)
-    yield from on_send(text, thread_id, history, request)
+    yield from on_send(text, thread_id, history, on_behalf, request)
 
 
 def on_poll(thread_id: str, history: list, mark: str):
@@ -438,15 +453,10 @@ def on_poll(thread_id: str, history: list, mark: str):
 
 def _review_queue() -> list[tuple[str, str]]:
     """Requests waiting for approval, newest first."""
-    choices = []
-    for tid in runner.threads(100):
-        if runner.current_event(tid)["type"] != "approval":
-            continue
-        values = runner.state(tid)
-        request = values.get("request") or {}
-        desc = (request.get("dataset_description") or "")[:70]
-        choices.append((f"{values.get('request_id', tid)} · {', '.join(request.get('sources', []))} · {desc}", tid))
-    return choices
+    return [
+        (f"{s['request_id'] or s['thread_id']} · {s['sources']} · {s['description'][:70]} · {s['requested_by'] or '-'}", s["thread_id"])
+        for s in runner.sessions.recent(status="approval", limit=100)
+    ]
 
 
 def on_review_refresh(request: gr.Request):
@@ -479,7 +489,7 @@ def on_review_decision(action: str):
         if action == "edit" and not comment:
             gr.Warning("Write what should change in the comment box first.")
             return keep, keep, keep, keep, keep
-        runner.reply(thread_id, {"action": action, "comment": comment})
+        runner.reply(thread_id, {"action": action, "comment": comment}, reviewer=_user(request) or "data team")
         values = runner.state(thread_id)
         if action == "approve":
             title = (values.get("outputs") or {}).get("title") or values.get("request_id", "")
@@ -504,17 +514,13 @@ def _session_choices(user: str) -> list[tuple[str, str]]:
     """Recent sessions: all of them for the Data Team, a requester's own otherwise."""
     everyone = auth.is_data_team(user)
     choices = []
-    for tid in runner.threads(30 if everyone else 300):
-        values = runner.state(tid)
-        if not values or not (everyone or values.get("requested_by") == user):
-            continue
-        sources = ", ".join((values.get("request") or {}).get("sources", [])) or "no source yet"
-        status = SESSION_STATUS.get(runner.current_event(tid)["type"], "")
-        if everyone and values.get("requested_by"):
-            status += f" · {values['requested_by']}"
-        choices.append((f"{values.get('request_id', tid)} · {sources} · {status}", tid))
-        if len(choices) == 30:
-            break
+    for s in runner.sessions.recent(user=None if everyone else user, limit=30):
+        label = f"{s['request_id'] or s['thread_id']} · {s['sources'] or 'no source yet'} · {SESSION_STATUS.get(s['status'], '')}"
+        if everyone and s["requested_by"]:
+            label += f" · {s['requested_by']}"
+            if s["created_by"] and s["created_by"] != s["requested_by"]:
+                label += f" (filed by {s['created_by']})"
+        choices.append((label, s["thread_id"]))
     return choices
 
 
@@ -604,7 +610,8 @@ def on_load(request: gr.Request):
         role = "Data Team" if full else "Requester"
         account = (f'<div class="account">Signed in as <b>{_esc(user)}</b> {_pill(role, "blue" if full else "neutral")}'
                    ' <a href="logout">Log out</a></div>')
-    return account, *(gr.Tab(visible=full) for _ in range(3)), gr.update(choices=_session_choices(user), value=None)
+    return (account, *(gr.Tab(visible=full) for _ in range(3)), gr.update(choices=_session_choices(user), value=None),
+            gr.update(visible=full))
 
 
 # ---------- layout ----------
@@ -750,6 +757,12 @@ def build_ui() -> gr.Blocks:
                             with gr.Accordion("Preview User Story", open=False):
                                 result_preview = gr.Markdown(elem_classes="us-preview")
                         request_card = gr.HTML(_request_html({}))
+                        on_behalf = gr.Textbox(
+                            label="On behalf of (Data Team, optional)",
+                            placeholder="requester@company.com",
+                            info="Filing a new request for someone else: they own the session and see it under Sessions.",
+                            visible=full,
+                        )
 
             with gr.Tab("🗂 Sessions", id="sessions") as sessions_tab:
                 gr.Markdown("Sessions are saved automatically. Reopen one to continue where you left off, e.g. after a disconnect.")
@@ -824,8 +837,8 @@ def build_ui() -> gr.Blocks:
         assert len(outputs) == N_OUT
         # The chat shows its own "thinking" bubble, so hide Gradio's progress overlay.
         busy = {"show_progress": "hidden"}
-        box.submit(on_send, [box, thread_state, chat], outputs, **busy)
-        chat.example_select(on_example, [thread_state, chat], outputs, **busy)
+        box.submit(on_send, [box, thread_state, chat, on_behalf], outputs, **busy)
+        chat.example_select(on_example, [thread_state, chat, on_behalf], outputs, **busy)
         poll_timer.tick(on_poll, [thread_state, chat, mark], outputs, **busy)
         new_btn.click(lambda: _view("", []), None, outputs)
         thread_state.change(lambda t: t, thread_state, thread_label)
@@ -846,7 +859,7 @@ def build_ui() -> gr.Blocks:
         apply_btn.click(on_apply, [host, api_key, model], [llm_status, header])
         disable_btn.click(on_disable, host, [llm_status, header])
         reload_btn.click(on_reload_repos, None, [repos_md, header])
-        demo.load(on_load, None, [account, review_tab, settings_tab, debug_tab, session_dd])
+        demo.load(on_load, None, [account, review_tab, settings_tab, debug_tab, session_dd, on_behalf])
     return demo
 
 

@@ -66,9 +66,28 @@ def build_graph(checkpointer=None):
     return g.compile(checkpointer=checkpointer)
 
 
-def get_checkpointer(db_path: str | None = None) -> SqliteSaver:
-    """File-backed SqliteSaver (on Colab, put it on Google Drive so it survives disconnects)."""
+def get_checkpointer(db_path: str | None = None):
+    """PostgresSaver when DATABASE_URL is set (Docker), else a file-backed SqliteSaver
+    (on Colab, put it on Google Drive so it survives disconnects). An explicit db_path always means SQLite."""
+    if config.DATABASE_URL and not db_path:
+        return _postgres_checkpointer(config.DATABASE_URL)
     path = Path(db_path or config.CHECKPOINT_DB)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False)
-    return SqliteSaver(conn)
+    saver = SqliteSaver(conn)
+    saver.setup()
+    return saver
+
+
+def _postgres_checkpointer(url: str):
+    # Imported here so SQLite-only setups (Colab, tests) don't need psycopg.
+    from langgraph.checkpoint.postgres import PostgresSaver
+    from psycopg.rows import dict_row
+    from psycopg_pool import ConnectionPool
+
+    # Settings PostgresSaver requires: autocommit, no server-side prepared statements, rows as dicts.
+    pool = ConnectionPool(url, min_size=1, max_size=10, open=True, kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row})
+    pool.wait(timeout=30)  # fail at startup, with a clear error, if the database is unreachable
+    saver = PostgresSaver(pool)
+    saver.setup()  # creates / migrates the checkpoint tables
+    return saver

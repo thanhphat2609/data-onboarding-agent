@@ -5,6 +5,7 @@
 | [HOW_IT_WORKS.md](HOW_IT_WORKS.md) | what happens to a data request from the first message to the User Story, for the requester and for the Data Team |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | how the system is built: components, the agent graph, state, the two repos it reads, LLM, storage, integrations, deployment |
 | [PHASES.md](PHASES.md) | what was built in each phase, what is verified and what isn't, known issues and next steps |
+| [POSTGRESQL.md](POSTGRESQL.md) | where sessions are stored (PostgreSQL, next to Airflow's metadata DB) and the queries to check them after a demo |
 
 Other docs in the repo:
 

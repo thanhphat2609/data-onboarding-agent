@@ -56,8 +56,9 @@ data-onboarding-agent/
 │   ├── config.py              # paths + env vars
 │   ├── state.py               # TypedDict state + request schema
 │   ├── workflow/              # the LangGraph flow
-│   │   ├── graph.py           #   build graph, SQLite checkpointer
+│   │   ├── graph.py           #   build graph, PostgreSQL / SQLite checkpointer
 │   │   ├── runner.py          #   start/reply API for the UI and scripts
+│   │   ├── sessions.py        #   sessions table: owner, status, reviewer per thread_id
 │   │   ├── extraction.py      #   field extraction (rule-based) + validation
 │   │   ├── evaluate.py        #   run past requests, compare with expectations + team handling
 │   │   └── nodes/             #   one file per node
@@ -184,7 +185,8 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 | `TRANSFORMATION_REPO`, `TRANSFORMATION_REF` | `thanhphat2609/data-onboarding-transformation`, `main` | |
 | `INGESTION_PATH`, `TRANSFORMATION_PATH` | (empty) | Local checkouts; win over GitHub |
 | `TRANSFORMATION_DBT_DIR` | (empty) | dbt project folder inside the transformation repo |
-| `CHECKPOINT_DB` | `./checkpoints.db` | |
+| `DATABASE_URL` | (empty) | PostgreSQL for sessions, e.g. `postgresql://agent:…@postgres:5432/onboarding_agent` (set by Docker compose). Empty = SQLite at `CHECKPOINT_DB` |
+| `CHECKPOINT_DB` | `./checkpoints.db` | SQLite file when `DATABASE_URL` is empty |
 | `OUTPUT_DIR` | `./outputs` | |
 | `TEAMS_WEBHOOK_URL` | (empty) | Empty = mock, writes to a file |
 | `ACCOUNTS` | (empty) | Web UI logins, `user:password` pairs separated by commas. Empty = no login, every tab open |

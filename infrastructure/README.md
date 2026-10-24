@@ -5,7 +5,8 @@ The web UI runs in Docker. One `Dockerfile` and one `docker-compose.yml` cover a
 ```
 infrastructure/
 ├── Dockerfile          # two stages: requirements into a venv, then slim runtime + agent/ + app.py; port 7860
-├── docker-compose.yml  # builds the image, publishes the port, passes settings, mounts outputs/, healthcheck
+├── docker-compose.yml  # app (builds the image, port, settings, outputs/, DNS) + postgres (sessions, Airflow metadata DB)
+├── postgres/init/      # first-start script: databases onboarding_agent + airflow, one role each
 ├── .env.example        # settings template; copy to .env (gitignored)
 └── README.md           # this file
 ```
@@ -43,6 +44,10 @@ cp infrastructure/.env.example infrastructure/.env      # PowerShell: Copy-Item 
 | `WEB_RESEARCH` | `0` turns off web research for sources the platform can't onboard yet |
 | `WITH_BROWSER` | `true` builds the image with headless Chromium for web research (Bing/Brave search, JavaScript-only pages); adds ~400 MB. Needs `up -d --build` |
 | `UI_PORT` | Host port, default `7860` |
+| `POSTGRES_PASSWORD`, `POSTGRES_AGENT_PASSWORD`, `POSTGRES_AIRFLOW_PASSWORD`, `POSTGRES_PLATFORM_PASSWORD` | Passwords of the `postgres` superuser and the `agent`, `airflow` and `platform` roles (defaults: the role name; the port is localhost-only). Read **only on the first start**, when the `pgdata` volume is empty. Use URL-safe characters. The ingestion repo's `.env` repeats the last two as `AIRFLOW_DB_PASSWORD` / `PLATFORM_DB_PASSWORD` |
+| `POSTGRES_PORT` | Host port of PostgreSQL, default `5432` |
+| `DATABASE_URL` | Override to use an external PostgreSQL instead of the `postgres` container |
+| `DNS_1`, `DNS_2` | DNS servers the app container uses, default `1.1.1.1` / `8.8.8.8` (fixes Docker-in-Docker DNS in Codespaces). On a company network that blocks public DNS, set them to its resolvers |
 
 Env vars already set in your shell override `.env`, so Codespaces secrets with these names are picked up automatically.
 
@@ -65,17 +70,25 @@ docker compose -f infrastructure/docker-compose.yml ps             # running? he
 docker compose -f infrastructure/docker-compose.yml logs -f        # follow the log
 docker compose -f infrastructure/docker-compose.yml up -d --build  # after changing code or requirements.txt (code is copied into the image)
 docker compose -f infrastructure/docker-compose.yml up -d          # after editing .env (restart does not re-read it)
-docker compose -f infrastructure/docker-compose.yml down           # stop; data in outputs/ is kept
+docker compose -f infrastructure/docker-compose.yml down           # stop; outputs/ and the pgdata volume are kept
+docker compose -f infrastructure/docker-compose.yml exec postgres psql -U agent -d onboarding_agent   # query sessions (docs/POSTGRESQL.md)
 docker compose -f infrastructure/docker-compose.yml exec app python -m agent.integrations.teams   # send a Teams test card from the container
 ```
 
 ## Where the data lives
 
-Everything the app writes ends up in `outputs/` on the host, so it survives `down` and rebuilds and you can open it directly:
+Both survive `down` and rebuilds:
 
-| In the container | On the host | Contents |
-|---|---|---|
-| `/app/outputs` | `outputs/` | `checkpoints.db` (sessions / thread_ids), user stories, feasibility, eval reports |
+| Where | Contents |
+|---|---|
+| `postgres` container (PostgreSQL 16), volume `pgdata` | Database `onboarding_agent`: sessions (LangGraph checkpoints + the `sessions` table). Databases `airflow` (Airflow's metadata DB) and `platform` (run records) for [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion). Queries and layout: [docs/POSTGRESQL.md](../docs/POSTGRESQL.md) |
+| `outputs/` on the host (bind mount `/app/outputs`) | User stories, feasibility, Teams messages, eval reports |
+
+`down -v` deletes the `pgdata` volume, so **every session, Airflow's metadata and the ingestion run records** go with it.
+
+The init script ([postgres/init/01-databases.sh](postgres/init/01-databases.sh)) creates the three databases and their roles on the first start only. Sessions saved earlier in `outputs/checkpoints.db` (SQLite) aren't moved over; open that file with `CHECKPOINT_DB` and no `DATABASE_URL` to read them.
+
+**Sharing the server with Airflow.** On the demo VM 1 (Agent + Airflow + Flink JobManager; TaskManagers on VM 2), this server is also Airflow's metadata DB. The `postgres` container joins the Docker network `data-platform`, which this compose file creates. The ingestion repo's compose joins it as an external network, and Airflow connects to `postgres:5432`, database `airflow`, user `airflow`. Start this stack first. This only works with both stacks on one Docker host; a standalone ingestion codespace runs its own Postgres instead (its `local-db` profile).
 
 ## GitHub Codespaces notes
 
@@ -102,6 +115,9 @@ The port is published on **127.0.0.1 only** because the app's login is only a pr
 | Codespaces: port 7860 not in PORTS | Check with `docker compose -f infrastructure/docker-compose.yml ps`. If it's running, add it by hand: PORTS → **Forward a Port** → `7860` |
 | Linux / VM: `Permission denied` writing `outputs/` | The container runs as uid 1000. Run `sudo chown -R 1000:1000 outputs` |
 | `Fetch models` fails | The Colab tab is closed or the tunnel URL changed. Re-run notebook step 4. For host Ollama, use `host.docker.internal`, not `localhost` |
-| Settings → Repositories: "DNS lookup of api.github.com failed" | The container has no working DNS; the token is not the problem. Compare `nslookup api.github.com` in the codespace terminal with `docker compose -f infrastructure/docker-compose.yml exec app python -c "import socket; print(socket.gethostbyname('api.github.com'))"`. If only the container fails, restart the stack (`down`, then `up -d`); if it keeps failing, add `dns: ["8.8.8.8", "1.1.1.1"]` under the `app` service in `docker-compose.yml`. The agent retries a failed load by itself after 60 s |
+| Settings → Repositories: "DNS lookup of api.github.com failed" | The container has no working DNS; the token is not the problem. The `app` service now uses `DNS_1` / `DNS_2` (default 1.1.1.1 / 8.8.8.8). Check with `docker compose -f infrastructure/docker-compose.yml exec app python -c "import socket; print(socket.gethostbyname('api.github.com'))"`. If it still fails, those servers are blocked on this network: set `DNS_1` / `DNS_2` to its resolvers (`cat /etc/resolv.conf` on the host), then `up -d`. The agent retries a failed load by itself after 60 s |
+| `app` waits forever / `dependency failed to start: container data-onboarding-postgres is unhealthy` | `docker compose -f infrastructure/docker-compose.yml logs postgres`. An init-script error (e.g. `$'\r': command not found` = the script was checked out with Windows line endings) means the databases weren't created. Fix it, then `down -v` (**deletes the database**) and `up -d` |
+| `network data-platform was found but has incorrect label` | The ingestion repo's `bootstrap.sh` created the network first (standalone mode). Stop the ingestion stack, `docker network rm data-platform`, start this stack, then the ingestion stack |
+| `password authentication failed for user "agent"` | The passwords in `.env` changed after the first start; the volume keeps the old ones. `ALTER ROLE agent PASSWORD '…'` as `postgres`, or `down -v` on a throwaway setup |
 | Header pill "Repos not readable" / 404 in Settings → Repositories | `GITHUB_TOKEN` is missing or can't read one of the repos (in Codespaces: the preset token). Export a token with read access to both, then `up -d` |
 | `port is already allocated` | Something else uses 7860. Set `UI_PORT=7861` in `.env` and open that port instead |

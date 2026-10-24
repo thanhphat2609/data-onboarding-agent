@@ -84,6 +84,15 @@ To make the source known: add a source template, connection or job for it in dat
 - 🟡 Other accounts are requesters: only **Request** and **Sessions**, and only their own sessions (`requested_by` stored with each request)
 - 🟡 Review and Settings handlers check the role on the server too; "Signed in as … · Log out" bar
 
+## Added: PostgreSQL + sessions table 🟡 (2026-10-24)
+> Code done; the SQLite path ran end to end locally (ownership and on-behalf rows checked). PostgreSQL and the compose stack are not yet run: test in Codespaces.
+- 🟡 `postgres` service (PostgreSQL 16.15) in [docker-compose.yml](../infrastructure/docker-compose.yml): the platform's one server, databases `onboarding_agent` (this app), `airflow` (Airflow metadata) and `platform` (ingestion run records), one role each, created by [postgres/init/01-databases.sh](../infrastructure/postgres/init/01-databases.sh); shared Docker network `data-platform` for Airflow
+- 🟡 `DATABASE_URL` → `PostgresSaver` on a psycopg pool; without it SQLite as before (laptop, Colab)
+- 🟡 `sessions` table ([sessions.py](../agent/workflow/sessions.py)) in the same database: Sessions list, review queue and ownership checks are SQL instead of loading every thread; existing sessions are backfilled on start
+- 🟡 `requested_by` (owner) vs `created_by` (who typed it) vs `reviewed_by`: the Data Team can file a request **on behalf of** a requester
+- 🟡 DNS fix: the `app` container uses `DNS_1` / `DNS_2` (default 1.1.1.1 / 8.8.8.8) for the Codespaces "DNS lookup of api.github.com failed"
+- ⬜ Run in a codespace: `up -d --build`, a full request + approval, then the queries in [POSTGRESQL.md](POSTGRESQL.md)
+
 ## Added: UI redesign + Data Team review ✅ (2026-10-23)
 - ✅ Tabs: **💬 Request**, **🗂 Sessions**, **🛡 Data Team review**, **⚙️ Settings**, **🔧 Debug**; admin tools are out of the requester's way
 - ✅ Request tab: welcome screen with example prompts, step tracker (Describe → Details → Feasibility → Review → User Story, amber on gaps), live "Your request" card (x/7 details), status pills, User Story preview + download
@@ -134,7 +143,7 @@ To make the source known: add a source template, connection or job for it in dat
 
 ## After the prototype
 From [PLAN.md](../PLAN.md):
-1. Run on a VM with Docker (the compose file is ready); checkpointer → Postgres
+1. Run on a VM with Docker (the compose file is ready, PostgreSQL included)
 2. Model: Ollama/vLLM on a GPU VM, or an LLM API approved by the company
 3. Teams bot to approve directly in the thread (replaces the review tab + key)
 4. Create real User Stories in Azure DevOps / Jira
