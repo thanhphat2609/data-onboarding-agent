@@ -8,7 +8,8 @@ infrastructure/
 ├── postgres/init/          # first-start script: databases onboarding_agent, airflow, platform; one role each
 ├── non-prod/               # laptop and GitHub Codespaces (this README)
 │   ├── docker-compose.yml  #   app (builds the image, port, settings, outputs/) + postgres
-│   └── .env.example        #   settings template; copy to non-prod/.env (gitignored)
+│   ├── .env.example        #   settings template; copy to non-prod/.env (gitignored)
+│   └── codespace-network.sh #  Codespaces firewall fix, run on every start by .devcontainer/devcontainer.json
 ├── prod/                   # VM 1 (Agent + Airflow + Flink JobManager): written once the VM exists
 └── README.md               # this file
 ```
@@ -95,16 +96,16 @@ The init script ([postgres/init/01-databases.sh](postgres/init/01-databases.sh))
 
 ## GitHub Codespaces notes
 
-- **Docker is already there.** The default Codespaces image includes Docker, so no extra setup is needed. Open the codespace and run the command from step 2.
+- **Docker is already there.** [.devcontainer/devcontainer.json](../.devcontainer/devcontainer.json) uses the default Codespaces image (Docker included), forwards port 7860 and fixes the container firewall on every start (below). Open the codespace and run the command from step 2.
 - **Secrets:** add the variables above under **GitHub → Settings → Codespaces → Secrets** and give them access to this repo, or use `infrastructure/non-prod/.env`. `GITHUB_TOKEN` is special in Codespaces: the codespace presets its own, which can only read the repo it was opened from (so both platform repos give 404), it wins over `.env`, and GitHub doesn't allow a secret named `GITHUB_*`. Add your token as the Codespaces secret **`PLATFORM_GITHUB_TOKEN`** instead; the agent prefers it. Secrets and `ACCOUNTS` reach a running codespace only after it restarts (or `export` them in the terminal, then `up -d`).
 - **Who can open the URL:** the port is **Private** by default, so only you, signed in to GitHub, can open it. Keep it that way: the app's own login is a prototype's: anyone who can open the URL can self-register as a requester, the Data Team password is plain text in env, and there is no rate limit. For a team demo, right-click the port → **Port visibility → Private to Organization**. Avoid **Public**.
 - **Persistence:** `outputs/` is under `/workspaces`, so they survive stopping the codespace but **are lost when the codespace is deleted**. Inactive codespaces are deleted after 30 days by default. Copy any `outputs/` you need, since that folder is gitignored.
 - **Restarts:** after the codespace is stopped and reopened, run `docker compose -f infrastructure/non-prod/docker-compose.yml up -d` again if the UI isn't in PORTS.
-- **Container networking can be blocked (check once per codespace start).** Some codespaces load two firewalls at once: Docker 29 writes its rules to `nf_tables`, while old `iptables-legacy` rules with `-P FORWARD DROP` only let the default `docker0` bridge through. The compose network is a separate bridge, so its traffic is dropped. Symptoms: the app restarts with `PoolTimeout` / `connection timeout expired` (it can't reach `postgres`), and "DNS lookup of api.github.com failed". See [Codespaces: containers can't reach each other or the internet](#codespaces-containers-cant-reach-each-other-or-the-internet).
+- **Container networking is blocked in a fresh codespace, fixed automatically.** Codespaces load two firewalls at once: Docker 29 writes its rules to `nf_tables`, while old `iptables-legacy` rules with `-P FORWARD DROP` only let the default `docker0` bridge through. The compose network is a separate bridge, so its traffic is dropped. Symptoms: the app restarts with `PoolTimeout` / `connection timeout expired` (it can't reach `postgres`), and "DNS lookup of api.github.com failed". [non-prod/codespace-network.sh](non-prod/codespace-network.sh) fixes it on every codespace start (`postStartCommand`); details in [Codespaces: containers can't reach each other or the internet](#codespaces-containers-cant-reach-each-other-or-the-internet).
 
 ### Codespaces: containers can't reach each other or the internet
 
-Seen on 2026-10-24 (Docker 29.8, `iptables v1.8.10 (nf_tables)`).
+Seen on 2026-10-24 (Docker 29.8, `iptables v1.8.10 (nf_tables)`) and again in a brand-new codespace on 2026-10-25: every new codespace starts with the rule. Since then `codespace-network.sh` runs on each start. A codespace created before `.devcontainer/` existed doesn't run it: use step 2, or `bash infrastructure/non-prod/codespace-network.sh`.
 
 **1. Confirm it.** Docker's default network works, the compose network doesn't:
 
@@ -125,7 +126,7 @@ docker compose -f infrastructure/non-prod/docker-compose.yml restart app
 docker compose -f infrastructure/non-prod/docker-compose.yml logs app --tail 15                           # "Running on local URL"
 ```
 
-The rule may come back after the codespace restarts (not yet checked), so repeat step 2 if the symptoms return. Don't work around it with hard-coded DNS servers in compose: public resolvers (1.1.1.1 / 8.8.8.8) don't answer from a codespace, and the database connection would still be blocked.
+The app container keeps restarting until it reaches PostgreSQL, so after the fix it also recovers by itself within a minute. Don't work around it with hard-coded DNS servers in compose: public resolvers (1.1.1.1 / 8.8.8.8) don't answer from a codespace, and the database connection would still be blocked.
 
 ## Model
 

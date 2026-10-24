@@ -1,0 +1,13 @@
+{
+  // GitHub Codespaces for this repo: the default Codespaces image (Docker included), plus a firewall fix
+  // on every start so Docker compose networks work (infrastructure/non-prod/codespace-network.sh).
+  // Start the app yourself: docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
+  "name": "data-onboarding-agent",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "forwardPorts": [7860],
+  "portsAttributes": {
+    "7860": { "label": "Agent UI", "onAutoForward": "notify" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "ignore" }
+  },
+  "postStartCommand": "bash infrastructure/non-prod/codespace-network.sh"
+}
