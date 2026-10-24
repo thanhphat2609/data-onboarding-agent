@@ -140,8 +140,13 @@ To make the source known: add a source template, connection or job for it in dat
 - ✅ *Fixed 2026-10-20 by web research.* **Source without a playbook: "ok" did not trigger any investigation** (reported 2026-10-12, seen with GSC). Replying `ok` only recorded the risk and moved on, while the message read as if the agent would investigate. Reworded, and the `investigate_source` step was added. (Playbooks were replaced by the ingestion repo on 2026-10-23; a source is known once that repo can onboard it.)
 
 ## Next steps
+
+> **Where we left off (2026-10-25).** v0.7.0 runs in Codespaces: PostgreSQL sessions, login (only the Data Team in `ACCOUNTS`, requesters self-register), Codespaces secrets `PLATFORM_GITHUB_TOKEN` + `ACCOUNTS`, firewall fix on every codespace start. On `main` after v0.7.0, not tagged yet: research in rounds, the source name as an exact phrase, "which product?" for a company name.
+> **To pick up:** (1) after any `git pull`, run `docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`, because the code lives in the image; (2) with a **new** request for a source the platform lacks (e.g. Google Search Console), check the User Story's *Web research* section: searches, kept/off-topic counts, docs site, passages; (3) if it looks right, tag **v0.8.0**; if engines rate-limit (searches with `(0 / 0)`), consider a search API with a key.
+> Paused to work on data-onboarding-ingestion: its ADR-0011 (shared PostgreSQL hosted by this repo's stack, `local-db` profile when standalone) is written but uncommitted there.
+
 1. Run the notebook on Colab: tool-calling test, pick a model, host the model for the web app.
-2. Build and run the Docker image (`docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`), locally or in a codespace, with `GITHUB_TOKEN` set.
+2. Build and run the Docker image (`docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`), locally or in a codespace, with `PLATFORM_GITHUB_TOKEN` set (Codespaces secret).
 3. As the platform grows (more templates, connections, jobs, dbt models), replay a few requests with `python -m agent.workflow.evaluate <folder>` to check the recommendations.
 4. Write 3–5 real past requests as YAML (including `team_handling`), run `python -m agent.workflow.evaluate <folder>`, review `report.md` / `mistakes.csv`.
 5. Hook up the real Teams webhook (`python -m agent.integrations.teams <url>` first).
