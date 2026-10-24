@@ -45,7 +45,9 @@ def research_section(research: dict) -> list[str]:
         if f.get("docs_site"):
             lines.append(f"- Official docs site (guessed): `{f['docs_site']}`")
         if f.get("searches"):
-            lines.append("- Searches: " + "; ".join(f"round {s['round']}: `{s['query']}` ({s['results']})" for s in f["searches"]))
+            lines.append("- Searches (kept / off-topic results): " + "; ".join(
+                f"round {s['round']}: `{s['query']}` ({s['results']} / {s.get('off_topic', 0)})" for s in f["searches"]
+            ))
         lines += [f"- Note: {n}" for n in f.get("notes") or []]
         if f.get("source_notes"):
             lines.append(f"- Draft source notes: `{f['source_notes']}`")

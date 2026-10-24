@@ -186,11 +186,12 @@ The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks
 **Research in rounds** ([investigate.py](../agent/research/investigate.py)), modelled on how a person or Claude researches instead of running one search:
 
 1. **Plan:** one search per topic (access/export, history/retention, rate limits, auth) plus the official docs. Links the requester pasted are read first.
-2. **Primary sources first:** the docs site is the doc-like host found most often, preferring hosts that carry the source's name, so a connector vendor's page about the source doesn't win. Its pages rank first. Reddit, YouTube and similar sites are skipped.
-3. **Best sentences per page:** taken in turns per topic, sentences with a number ("14 months", "600 requests per minute") first, up to 4000 characters per page.
-4. **Gaps → follow-up searches:** a topic with no evidence, or history without a number, gets `site:<docs host> …` searches in the next round.
-5. **Limits per source:** `RESEARCH_MAX_PAGES` (8), `RESEARCH_ROUNDS` (2), `RESEARCH_TIME_BUDGET_S` (180 s). Round 1 uses about half the pages, so the follow-ups have room.
-6. **Show the work:** every query and its result count are in `findings["searches"]` and in the User Story, with the guessed docs site and any topic still without evidence.
+2. **Stay on the source:** every query, including follow-ups, has the source name as an exact phrase (`"google search console" API rate limits quota`), and results whose title, description or URL don't name every word of the source are dropped as off-topic (counted in the User Story).
+3. **Primary sources first:** the docs site is the doc-like host found most often, preferring hosts that carry the source's name, so a connector vendor's page about the source doesn't win. Its pages rank first. Reddit, YouTube and similar sites are skipped.
+4. **Best sentences per page:** taken in turns per topic, sentences with a number ("14 months", "600 requests per minute") first, up to 4000 characters per page.
+5. **Gaps → follow-up searches:** a topic with no evidence, or history without a number, gets `site:<docs host> "<source>" …` searches in the next round.
+6. **Limits per source:** `RESEARCH_MAX_PAGES` (8), `RESEARCH_ROUNDS` (2), `RESEARCH_TIME_BUDGET_S` (180 s). Round 1 uses about half the pages, so the follow-ups have room.
+7. **Show the work:** every query and its result count are in `findings["searches"]` and in the User Story, with the guessed docs site and any topic still without evidence.
 
 More searches per source means more chances for a key-less engine to rate-limit (see PHASES known issues).
 

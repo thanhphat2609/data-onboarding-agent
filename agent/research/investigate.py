@@ -46,6 +46,7 @@ TOPICS = {
 NUMBER_UNIT_RE = re.compile(r"\b\d+\s*(?:day|month|year)s?\b", re.I)
 
 # Round 1: one search per topic plus the official docs. Fixed words only: the request text never leaves the machine.
+# {source} is the source name as an exact phrase ("google search console"), so engines don't drift to related products.
 DOCS_QUERY = "{source} developer documentation"
 TOPIC_QUERIES = {
     "access": "{source} API export data documentation",
@@ -86,16 +87,35 @@ def _rank(url: str) -> int:
     return sum(h in host for h in DOC_HINTS) * 2 + sum(f"/{h}" in path for h in DOC_HINTS)
 
 
-def _search(query: str, findings: dict, round_no: int, errors: list[str], n: int = 6) -> list[str]:
-    """One key-less web search, logged in findings["searches"]. Failures (rate limits) just mean no results."""
+def _phrase(source: str) -> str:
+    """The source name as an exact-phrase search term: "google search console"."""
+    return f'"{norm(source)}"'
+
+
+def _source_words(source: str) -> list[str]:
+    return [t for t in slug(source).split("_") if len(t) > 2] or [slug(source)]
+
+
+def _about_source(result, words: list[str]) -> bool:
+    """A result is on topic when its title, description or URL names every word of the source
+    (search-console in a URL counts as "search console")."""
+    text = re.sub(r"[^\w]+", " ", f"{result.title} {result.description} {result.url}".lower())
+    return all(w in text for w in words)
+
+
+def _search(query: str, source: str, findings: dict, round_no: int, errors: list[str], n: int = 8) -> list[str]:
+    """One key-less web search, logged in findings["searches"]: kept results are about the source and not a
+    forum/video site. Failures (rate limits) just mean no results."""
     try:
-        urls = [r.url for r in websearch.search(query, n).results]
+        results = websearch.search(query, n).results
     except Exception as exc:  # noqa: BLE001
         log.warning("Web search failed for %r: %s", query, exc)
         errors.append(str(exc))
-        urls = []
-    findings["searches"].append({"round": round_no, "query": query, "results": len(urls)})
-    return [u for u in urls if not any(h in u.lower() for h in SKIP_HOSTS)]
+        results = []
+    words = _source_words(source)
+    kept = [r.url for r in results if _about_source(r, words) and not any(h in r.url.lower() for h in SKIP_HOSTS)]
+    findings["searches"].append({"round": round_no, "query": query, "results": len(kept), "off_topic": len(results) - len(kept)})
+    return kept
 
 
 def _docs_host(urls: list[str], source: str) -> str | None:
@@ -277,7 +297,7 @@ def _research(source: str, request: dict, messages: list[dict], findings: dict) 
     found: list[str] = []
     for query in [DOCS_QUERY, *TOPIC_QUERIES.values()]:
         if time_left():
-            found += _search(query.format(source=source), findings, 1, errors)
+            found += _search(query.format(source=_phrase(source)), source, findings, 1, errors)
     found = list(dict.fromkeys(found))
     docs_host = _docs_host(found, source)
     findings["docs_site"] = docs_host
@@ -293,9 +313,10 @@ def _research(source: str, request: dict, messages: list[dict], findings: dict) 
             break
         more: list[str] = []
         for topic in missing:
-            query = f"site:{docs_host} {FOLLOW_UP[topic]}" if docs_host else f"{source} {FOLLOW_UP[topic]} documentation"
+            # The source name stays in: a docs host like developers.google.com covers many products.
+            query = f"site:{docs_host} {_phrase(source)} {FOLLOW_UP[topic]}" if docs_host else f"{_phrase(source)} {FOLLOW_UP[topic]} documentation"
             if time_left():
-                more += _search(query, findings, round_no, errors)
+                more += _search(query, source, findings, round_no, errors)
         more = sorted(dict.fromkeys(more), key=lambda u: _priority(u, docs_host), reverse=True)
         read([(u, "follow-up search") for u in more], 2 * len(missing), round_no)
         findings["rounds"] = round_no
