@@ -105,6 +105,9 @@ To make the source known: add a source template, connection or job for it in dat
 - ⬜ Build the Docker image with `WITH_BROWSER=true`
 
 ## Known issues / backlog
+- ✅ *Fixed 2026-10-23.* **A message typed while waiting for the Data Team was always treated as a change** (a question like "any idea about Google Search Console data" re-ran the check and repeated the same reply). Now ([followup.py](../agent/workflow/followup.py)): questions are answered from the two repos (what ingestion/transformation have for that source, what exists today as examples) and nothing changes; **add** adds the source; changes are shown first and applied only after **yes**. Tested by replaying messages; not yet clicked through in the browser.
+- ✅ *Fixed 2026-10-23.* **A failed repo load stuck until Reload, with an unclear error.** Seen in a codespace: `NameResolutionError` for api.github.com (DNS inside the container, not the token). GitHub calls now retry transient network errors, the error says it is a network/DNS problem, and a failed load is retried after 60 s. Diagnosis steps: [infrastructure/README.md](../infrastructure/README.md#troubleshooting).
+- ✅ *Fixed 2026-10-23.* **ETA ranges were not understood.** "ETA must be in 2 or 3 weeks" made the agent ask again. Ranges ("2 or 3 weeks", "2-3 weeks", "2 đến 3 tuần") now take the earlier date, and a bare "2 weeks" works as an ETA answer. The "Noted: go-live date" confirmation now also shows when the same answer contains other dates. Free-text sources drop label/hedge words ("Source maybe from Google BigQuery" → `google big query`, type `bigquery`).
 - **Key-less web search is fragile.** Engines can rate-limit or bot-check a network: in testing, Bing gave generic results even in the headless browser, html.duckduckgo.com answered with a challenge, and `ddgs` stopped returning results after many test queries. Brave in the headless browser was the reliable engine. Research then reports "web search found nothing" and still asks its standard questions. A search API with a key would remove this.
 - ✅ *Fixed 2026-10-23.* **Relative ETAs were not understood.** "Go live should be next two weeks" made the agent repeat the ETA question with no explanation. It now reads relative dates in English and Vietnamese ("in 2 weeks", "end of next month", "2 tuần nữa", "cuối tháng") and confirms the date it computed ("Noted: go-live date 2026-11-06"). When nothing in an answer matches the questions, it says so instead of silently asking again.
 - **"ok" can be taken as a field answer.** If a field is still pending (e.g. "Used by"), replying `ok` stores "ok" as its value. Seen 2026-10-23. Fix idea: ignore yes-words as values for free-text fields.
@@ -114,6 +117,11 @@ To make the source known: add a source template, connection or job for it in dat
 - ✅ *Fixed 2026-10-20 by web research.* **Source without a playbook: "ok" did not trigger any investigation** (reported 2026-10-12, seen with GSC). Replying `ok` only recorded the risk and moved on, while the message read as if the agent would investigate. Reworded, and the `investigate_source` step was added. (Playbooks were replaced by the ingestion repo on 2026-10-23; a source is known once that repo can onboard it.)
 
 ## Next steps
+0. **TODO (agreed 2026-10-23, do next): login page with roles.**
+   - Simple account login in the web UI (Gradio `launch(auth=...)` + `gr.Request.username`); credentials from env / a secret, never in the repo.
+   - Account `data.team@gmail.com` = Data Team: sees every tab (Request, Sessions, Data Team review, Settings, Debug). Replaces `REVIEWER_KEY`.
+   - Any other account = requester: only **Request** (chat) and **Sessions**, and Sessions lists only that user's own sessions (store the username with each request/thread).
+   - Update docs (ARCHITECTURE Web UI, HOW_IT_WORKS roles, infrastructure README settings) and remove `REVIEWER_KEY`.
 1. Run the notebook on Colab: tool-calling test, pick a model, host the model for the web app.
 2. Build and run the Docker image (`docker compose -f infrastructure/compose.yaml up -d --build`), locally or in a codespace, with `GITHUB_TOKEN` set.
 3. As the platform grows (more templates, connections, jobs, dbt models), replay a few requests with `python -m agent.workflow.evaluate <folder>` to check the recommendations.

@@ -4,7 +4,7 @@ import re
 from langgraph.types import interrupt
 
 from agent import config, repos
-from agent.workflow.extraction import DATE_RE, is_yes, llm_extract, missing_fields, rule_extract, validate
+from agent.workflow.extraction import is_yes, llm_extract, missing_fields, rule_extract, validate
 from agent.llm.client import get_llm, load_prompt, safe_call
 from agent.workflow.nodes.common import get_today
 from agent.state import FIELD_QUESTIONS
@@ -132,8 +132,9 @@ def intake(state: dict) -> dict:
             # Say so instead of silently repeating the question. A partial answer is fine: the rest is just asked again.
             if kind == "fields" and asked.get("fields") and not found:
                 unreadable = text
-            # A relative date ("in two weeks") was turned into a calendar date: say which one.
-            if found.get("eta") and not re.search(DATE_RE, text):
+            # A relative date ("in two weeks") was turned into a calendar date: say which one. Checked on the
+            # ETA itself, since the same answer may contain other dates (e.g. the date range).
+            if found.get("eta") and found["eta"] not in text:
                 notes.append(f"Noted: go-live date **{found['eta']}**.\n")
 
     request, errors = validate(request, today)

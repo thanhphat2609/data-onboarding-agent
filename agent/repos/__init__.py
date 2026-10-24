@@ -11,6 +11,7 @@ reload() reads the repos again (Settings → Repositories in the UI).
 import logging
 import re
 import threading
+import time
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
@@ -28,7 +29,7 @@ INGESTION_FILES = ["code/templates/sources/*.yaml", "pipelines/connections/*.yam
 TYPE_ALIASES = {
     "sqlserver": ["sql server", "sqlserver", "mssql", "ms sql"],
     "postgresql": ["postgresql", "postgres"],
-    "bigquery": ["bigquery", "big query"],
+    "bigquery": ["google bigquery", "google big query", "bigquery", "big query"],
 }
 # Words around a system name in free text, e.g. "the ERP database on PostgreSQL" -> system "erp".
 _FILLER = {"on", "from", "in", "our", "the", "a", "an", "database", "db", "system", "data", "server", "source", "trên", "từ", "của"}
@@ -133,21 +134,24 @@ def load() -> Knowledge:
 
 _lock = threading.Lock()
 _kb: Knowledge | None = None
+_loaded_at = 0.0
+# A load that failed (e.g. a network blip) is tried again after this many seconds instead of sticking.
+RETRY_FAILED_AFTER_S = 60
 
 
 def get() -> Knowledge:
-    """The cached knowledge, loaded on first use."""
-    global _kb
+    """The cached knowledge, loaded on first use; reloaded when the last load failed over a minute ago."""
+    global _kb, _loaded_at
     with _lock:
-        if _kb is None:
-            _kb = load()
+        if _kb is None or (_kb.errors and time.monotonic() - _loaded_at > RETRY_FAILED_AFTER_S):
+            _kb, _loaded_at = load(), time.monotonic()
         return _kb
 
 
 def reload() -> Knowledge:
-    global _kb
+    global _kb, _loaded_at
     with _lock:
-        _kb = load()
+        _kb, _loaded_at = load(), time.monotonic()
         return _kb
 
 

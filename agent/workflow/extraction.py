@@ -83,9 +83,15 @@ def _end_of_month(d: date) -> date:
     return d.replace(day=calendar.monthrange(d.year, d.month)[1])
 
 
-def relative_date(text: str, today: date) -> date | None:
-    """A future date written relative to today, or None. Explicit YYYY-MM-DD dates are handled elsewhere."""
-    t = norm(text)
+# A range of durations ("2 or 3 weeks", "2-3 weeks", "2 đến 3 tuần") keeps its first, earlier number:
+# the stricter deadline, and the agent confirms the date it computed.
+_RANGE_RE = re.compile(rf"{_NUM}\s*(?:or|to|-|–|~|hoặc|đến|tới)\s*{_NUM}(?=\s*(?:days?|weeks?|months?|ngày|tuần|tháng))")
+
+
+def relative_date(text: str, today: date, bare: bool = False) -> date | None:
+    """A future date written relative to today, or None. Explicit YYYY-MM-DD dates are handled elsewhere.
+    bare=True also accepts a plain duration ("2 weeks"), for answers to the ETA question itself."""
+    t = _RANGE_RE.sub(lambda m: m.group(1), norm(text))
     if re.search(r"\bend of (?:the )?next month\b|cuối tháng (?:sau|tới)", t):
         return _end_of_month(_add_months(today, 1))
     if re.search(r"\bend of (?:the |this )?month\b|cuối tháng(?: này)?\b", t):
@@ -110,6 +116,10 @@ def relative_date(text: str, today: date) -> date | None:
         return _shift(today, 1, unit)
     if re.search(r"\btomorrow\b|ngày mai", t):
         return today + timedelta(days=1)
+    if bare and (m := re.search(rf"\b{_NUM}\s*(days?|weeks?|months?|ngày|tuần|tháng)\b", t)):
+        unit = m.group(2)
+        n = int(m.group(1)) if m.group(1).isdigit() else NUMBER_WORDS[m.group(1)]
+        return _shift(today, n, _UNIT_VI.get(unit) or _UNIT_EN[unit.rstrip("s")])
     return None
 
 
@@ -147,6 +157,17 @@ def parse_range(text: str, today: date) -> dict | None:
     return None
 
 
+# Leading label/hedge words in a free-text source answer: "Source maybe from Google BigQuery" -> "google bigquery".
+_SOURCE_HEDGE_RE = re.compile(
+    r"^(?:(?:the|our|data|sources?|system|maybe|probably|likely|perhaps|possibly|from|is|are|will be|"
+    r"nguồn|có thể|chắc là|từ|là)\s+|:\s*)+"
+)
+
+
+def _strip_hedges(text: str) -> str:
+    return _SOURCE_HEDGE_RE.sub("", text).strip()
+
+
 def parse_field(field: str, value: str, today: date):
     """Parse the value of one field. Returns None if it cannot be parsed."""
     value = value.strip()
@@ -156,13 +177,13 @@ def parse_field(field: str, value: str, today: date):
         found = find_sources(value)
         if found:
             return found
-        raw = [norm(s) for s in re.split(r"[,;/]| và | and ", value) if s.strip()]
-        return raw or None
+        raw = [_strip_hedges(norm(s)) for s in re.split(r"[,;/]| và | and ", value) if s.strip()]
+        return [s for s in raw if s] or None
     if field == "date_range":
         return parse_range(value, today)
     if field == "eta":
         toks = re.findall(DATE_RE, value)
-        d = to_date(toks[0]) if toks else relative_date(value, today)
+        d = to_date(toks[0]) if toks else relative_date(value, today, bare=True)
         return d.isoformat() if d else None
     if field == "refresh_frequency":
         return find_frequency(value)

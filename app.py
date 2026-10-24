@@ -25,6 +25,7 @@ from langgraph.types import Command
 
 from agent import config, repos
 from agent.llm import client as llm
+from agent.workflow import followup
 from agent.workflow.runner import AgentRunner
 from agent.state import REQUIRED_FIELDS
 
@@ -233,7 +234,7 @@ PLACEHOLDERS = {
     "describe": "Describe the data you need…   (Shift+Enter for a new line)",
     "details": "Answer here, one item per line, e.g. 1. from 2024-01-01 to now   (Shift+Enter for a new line)",
     "feasibility": "Reply ok to accept, or suggest an alternative…",
-    "review": "Waiting for the Data Team. Type here only if you want to change your request…",
+    "review": "Waiting for the Data Team. Ask a question, or type a change (you confirm it before it's applied)…",
     "complete": "Describe another data request to start a new one…",
 }
 
@@ -362,11 +363,32 @@ def on_send(message: str, thread_id: str, history: list):
     ev = runner.current_event(thread_id) if thread_id else {"type": "empty"}
     if ev["type"] == "question":
         graph_input = Command(resume=message)
-    elif ev["type"] == "approval":  # typing while approval is pending = edit request
-        graph_input = Command(resume={"action": "edit", "comment": message})
+    elif ev["type"] == "approval":  # waiting for the Data Team: answer questions, confirm changes first
+        yield from _followup(message, thread_id, history)
+        return
     else:
         thread_id, graph_input = runner.new_request(message)
     yield from _run(thread_id, graph_input, history)
+
+
+# Follow-up actions waiting for the requester's "yes"/"add", per thread (short-lived, so kept in memory).
+_PENDING: dict[str, dict] = {}
+
+
+def _followup(message: str, thread_id: str, history: list):
+    """A message while the request waits for review (agent/workflow/followup.py): nothing changes until confirmed."""
+    pending = _PENDING.pop(thread_id, None)
+    if pending and followup.confirms(message, pending):
+        yield from _run(thread_id, Command(resume={"action": "edit", "comment": pending["comment"]}), history)
+        return
+    if pending and followup.is_no(message):
+        reply = "OK, nothing changed. Your request is still with the Data Team."
+    else:
+        result = followup.respond(message, runner.state(thread_id))
+        reply = result.reply
+        if result.pending:
+            _PENDING[thread_id] = result.pending
+    yield _view(thread_id, history + [{"role": "assistant", "content": reply}])
 
 
 def on_example(evt: gr.SelectData, thread_id: str, history: list):
