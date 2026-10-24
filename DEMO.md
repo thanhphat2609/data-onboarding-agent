@@ -4,20 +4,21 @@ About 20 minutes. Goal: show the 3 things the prototype must prove (see `PLAN.md
 
 ## Before the demo
 1. **Model** (optional): host it on Colab (README → Step 1). Without it the agent runs rule-based. That is fine for the flow, but the questions and User Story text are plainer.
-2. **Repositories**: set `GITHUB_TOKEN` (read access to both repos), or `INGESTION_PATH` / `TRANSFORMATION_PATH` to local checkouts. In the app, **⚙️ Settings → Repositories** must list the systems, jobs and dbt models with no error. Today that is system `crm`, job `crm-customers-daily`, models `stg_crm__customers` and `crm_customers_current`, and source template `sqlserver`.
-3. **Teams**: create a channel workflow *"Post to a channel when a webhook request is received"*, then:
+2. **Docker (Codespaces)**: after `up -d`, `docker compose -f infrastructure/docker-compose.yml logs app --tail 15` must show `Running on local URL`. A `PoolTimeout` or "DNS lookup of api.github.com failed" means the codespace's legacy firewall blocks the compose network: run `sudo iptables-legacy -P FORWARD ACCEPT`, then `restart app` ([runbook](infrastructure/README.md#codespaces-containers-cant-reach-each-other-or-the-internet)).
+3. **Repositories**: set `GITHUB_TOKEN` (read access to both repos), or `INGESTION_PATH` / `TRANSFORMATION_PATH` to local checkouts. In the app, **⚙️ Settings → Repositories** must list the systems, jobs and dbt models with no error. Today that is system `crm`, job `crm-customers-daily`, models `stg_crm__customers` and `crm_customers_current`, and source template `sqlserver`.
+4. **Teams**: create a channel workflow *"Post to a channel when a webhook request is received"*, then:
    ```powershell
    .venv\Scripts\python -m agent.integrations.teams "<webhook url>"   # check a test card shows up
    $env:TEAMS_WEBHOOK_URL = "<webhook url>"
    ```
    If a post fails during the demo, the flow keeps going and the message is saved to `outputs/<request_id>/teams_messages.jsonl` (with `webhook_error`).
-4. **Past requests** (optional): write 3–5 real past requests as YAML (format in [agent/workflow/evaluate.py](agent/workflow/evaluate.py)) and run `.venv\Scripts\python -m agent.workflow.evaluate <folder>`; read `outputs/eval/<run>/report.md` before the demo so you know where the agent goes wrong.
-5. **Accounts**: one for the Data Team and one per requester, e.g.
+5. **Past requests** (optional): write 3–5 real past requests as YAML (format in [agent/workflow/evaluate.py](agent/workflow/evaluate.py)) and run `.venv\Scripts\python -m agent.workflow.evaluate <folder>`; read `outputs/eval/<run>/report.md` before the demo so you know where the agent goes wrong.
+6. **Accounts**: one for the Data Team and one per requester, e.g.
    ```powershell
    $env:ACCOUNTS = "data.team@gmail.com:<password>,alice@gmail.com:<password>"
    ```
    `data.team@gmail.com` is the Data Team by default (`DATA_TEAM` to change it); every other account only sees Request and its own Sessions.
-6. Start the app: `.venv\Scripts\python app.py`. Use two browser windows (one private): one signed in as the requester, one as the Data Team.
+7. Start the app: `.venv\Scripts\python app.py`. Use two browser windows (one private): one signed in as the requester, one as the Data Team.
 
 ## Script
 | # | Show | Point to make |

@@ -95,6 +95,32 @@ The init script ([postgres/init/01-databases.sh](postgres/init/01-databases.sh))
 - **Who can open the URL:** the port is **Private** by default, so only you, signed in to GitHub, can open it. Keep it that way: the app's own login (`ACCOUNTS`) is a prototype's, with plain-text passwords and no rate limit. For a team demo, right-click the port → **Port visibility → Private to Organization**. Avoid **Public**.
 - **Persistence:** `outputs/` is under `/workspaces`, so they survive stopping the codespace but **are lost when the codespace is deleted**. Inactive codespaces are deleted after 30 days by default. Copy any `outputs/` you need, since that folder is gitignored.
 - **Restarts:** after the codespace is stopped and reopened, run `docker compose -f infrastructure/docker-compose.yml up -d` again if the UI isn't in PORTS.
+- **Container networking can be blocked (check once per codespace start).** Some codespaces load two firewalls at once: Docker 29 writes its rules to `nf_tables`, while old `iptables-legacy` rules with `-P FORWARD DROP` only let the default `docker0` bridge through. The compose network is a separate bridge, so its traffic is dropped. Symptoms: the app restarts with `PoolTimeout` / `connection timeout expired` (it can't reach `postgres`), and "DNS lookup of api.github.com failed". See [Codespaces: containers can't reach each other or the internet](#codespaces-containers-cant-reach-each-other-or-the-internet).
+
+### Codespaces: containers can't reach each other or the internet
+
+Seen on 2026-10-24 (Docker 29.8, `iptables v1.8.10 (nf_tables)`).
+
+**1. Confirm it.** Docker's default network works, the compose network doesn't:
+
+```bash
+docker run --rm alpine nslookup api.github.com                                                   # works
+docker run --rm --network data-onboarding-agent_default alpine nslookup api.github.com           # times out
+docker run --rm --network data-onboarding-agent_default alpine nc -zv -w 3 postgres 5432         # times out
+sudo iptables -S FORWARD | tail -1        # "# Warning: iptables-legacy tables present"
+sudo iptables-legacy -S FORWARD           # "-P FORWARD DROP" and rules for docker0 only
+```
+
+**2. Fix it** (changes only this codespace's firewall), then check and restart the app:
+
+```bash
+sudo iptables-legacy -P FORWARD ACCEPT
+docker run --rm --network data-onboarding-agent_default alpine nc -zv -w 3 postgres 5432         # "open"
+docker compose -f infrastructure/docker-compose.yml restart app
+docker compose -f infrastructure/docker-compose.yml logs app --tail 15                           # "Running on local URL"
+```
+
+The rule may come back after the codespace restarts (not yet checked), so repeat step 2 if the symptoms return. Don't work around it with hard-coded DNS servers in compose: public resolvers (1.1.1.1 / 8.8.8.8) don't answer from a codespace, and the database connection would still be blocked.
 
 ## Model
 
@@ -113,7 +139,8 @@ The port is published on **127.0.0.1 only** because the app's login is only a pr
 | Codespaces: port 7860 not in PORTS | Check with `docker compose -f infrastructure/docker-compose.yml ps`. If it's running, add it by hand: PORTS → **Forward a Port** → `7860` |
 | Linux / VM: `Permission denied` writing `outputs/` | The container runs as uid 1000. Run `sudo chown -R 1000:1000 outputs` |
 | `Fetch models` fails | The Colab tab is closed or the tunnel URL changed. Re-run notebook step 4. For host Ollama, use `host.docker.internal`, not `localhost` |
-| Settings → Repositories: "DNS lookup of api.github.com failed" | The container has no working DNS; the token is not the problem. Containers use Docker's default DNS (the host's resolver). Public resolvers such as 1.1.1.1 / 8.8.8.8 do **not** answer from a Codespace's Docker (tested 2026-10-24), so don't hard-code them. Check with `docker compose -f infrastructure/docker-compose.yml exec app python -c "import socket; print(socket.gethostbyname('api.github.com'))"` and compare with `cat /etc/resolv.conf` / `getent hosts api.github.com` on the host. The agent retries a failed load by itself after 60 s |
+| Settings → Repositories: "DNS lookup of api.github.com failed" | The container can't reach the network; the token is not the problem. In Codespaces this is the legacy firewall rule: [fix](#codespaces-containers-cant-reach-each-other-or-the-internet). Elsewhere, compare `docker compose -f infrastructure/docker-compose.yml exec app python -c "import socket; print(socket.gethostbyname('api.github.com'))"` with `getent hosts api.github.com` on the host. The agent retries a failed load by itself after 60 s |
+| App restarts with `PoolTimeout` / `ConnectionTimeout: connection timeout expired` | The app can't reach `postgres` over the Docker network. Codespaces: [same legacy firewall fix](#codespaces-containers-cant-reach-each-other-or-the-internet). Elsewhere: `docker compose -f infrastructure/docker-compose.yml logs postgres` |
 | `app` waits forever / `dependency failed to start: container data-onboarding-postgres is unhealthy` | `docker compose -f infrastructure/docker-compose.yml logs postgres`. An init-script error (e.g. `$'\r': command not found` = the script was checked out with Windows line endings) means the databases weren't created. Fix it, then `down -v` (**deletes the database**) and `up -d` |
 | `network data-platform was found but has incorrect label` | The ingestion repo's `bootstrap.sh` created the network first (standalone mode). Stop the ingestion stack, `docker network rm data-platform`, start this stack, then the ingestion stack |
 | `password authentication failed for user "agent"` | The passwords in `.env` changed after the first start; the volume keeps the old ones. `ALTER ROLE agent PASSWORD '…'` as `postgres`, or `down -v` on a throwaway setup |

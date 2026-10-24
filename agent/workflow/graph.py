@@ -86,8 +86,8 @@ def _postgres_checkpointer(url: str):
     from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool, PoolTimeout
 
-    # gssencmode=disable: libpq otherwise tries Kerberos first, whose own DNS lookups hang the connection
-    # when the container's upstream DNS doesn't answer (seen in GitHub Codespaces).
+    # No Kerberos on the Docker network: gssencmode=disable skips libpq's GSS attempt (and its lookups) on every connect.
+    # connect_timeout: fail fast instead of hanging when the network is blocked (infrastructure/README.md#troubleshooting).
     connect = {"connect_timeout": 10, "gssencmode": "disable"}
     # Settings PostgresSaver requires: autocommit, no server-side prepared statements, rows as dicts.
     pool = ConnectionPool(
