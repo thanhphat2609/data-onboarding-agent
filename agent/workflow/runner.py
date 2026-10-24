@@ -17,12 +17,12 @@ class AgentRunner:
         return {"configurable": {"thread_id": thread_id}}
 
     @staticmethod
-    def new_request(message: str, thread_id: str | None = None, today: str | None = None) -> tuple[str, dict]:
-        """Initial graph input for a new request. Returns (thread_id, input)."""
+    def new_request(message: str, thread_id: str | None = None, today: str | None = None, user: str = "") -> tuple[str, dict]:
+        """Initial graph input for a new request, owned by `user` (the web UI login). Returns (thread_id, input)."""
         thread_id = thread_id or uuid.uuid4().hex[:12]
         today = today or date.today().isoformat()
         request_id = f"REQ-{today.replace('-', '')}-{thread_id[:6]}"
-        return thread_id, {"request_id": request_id, "today": today, "messages": [{"role": "user", "content": message}]}
+        return thread_id, {"request_id": request_id, "requested_by": user, "today": today, "messages": [{"role": "user", "content": message}]}
 
     def stream(self, thread_id: str, graph_input) -> Iterator[dict]:
         """Run the graph, yielding {"type": "progress", "node": name} as each node starts,

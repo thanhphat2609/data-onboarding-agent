@@ -36,9 +36,13 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "")
 # API key for a remote Ollama behind notebooks/ollama_auth_proxy.py (e.g. hosted on Colab).
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
 
-# Key for the "Data Team review" tab of the web UI (approve / request changes). Empty = tab open to everyone.
-# A soft gate so requesters don't approve their own requests; the app itself has no login.
-REVIEWER_KEY = os.getenv("REVIEWER_KEY", "")
+# Web UI login (agent/auth.py). Accounts as "user:password" pairs, comma-separated in ACCOUNTS and/or one per line
+# in ACCOUNTS_FILE (e.g. a Docker secret). No accounts = no login page, everyone sees every tab (local development).
+ACCOUNTS = os.getenv("ACCOUNTS", "")
+ACCOUNTS_FILE = os.getenv("ACCOUNTS_FILE", "")
+# Accounts with full access (Data Team review, Settings, Debug, every session), comma-separated.
+# Every other account is a requester: Request + Sessions, and only their own sessions.
+DATA_TEAM = os.getenv("DATA_TEAM", "data.team@gmail.com")
 
 # Teams Workflows webhook: leave empty to mock (messages are written to outputs/).
 TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")

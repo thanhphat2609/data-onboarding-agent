@@ -1,0 +1,59 @@
+# Docker Compose for data-onboarding-agent: the web UI on a laptop, a VM or GitHub Codespaces.
+# From the repo root:
+#   docker compose -f infrastructure/docker-compose.yml up -d --build
+#   -> http://127.0.0.1:7860   (Codespaces: PORTS tab)
+# Settings come from shell env vars (e.g. Codespaces secrets) or infrastructure/.env (copy .env.example).
+name: data-onboarding-agent
+
+services:
+  # ─────────────────────────────────────────────
+  # Web UI + agent (Gradio)
+  # ─────────────────────────────────────────────
+  app:
+    build:
+      context: ..
+      dockerfile: infrastructure/Dockerfile
+      args:
+        WITH_BROWSER: ${WITH_BROWSER:-false}   # true = headless Chromium for web research (~400 MB)
+    image: data-onboarding-agent:latest
+    container_name: data-onboarding-agent
+    # Localhost only. The login (ACCOUNTS) is a prototype's: on a VM use an SSH tunnel or a reverse proxy with TLS.
+    ports:
+      - "127.0.0.1:${UI_PORT:-7860}:7860"
+    environment:
+      # LLM: empty OLLAMA_MODEL = rule-based
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      # The two repos the agent reads (agent/repos); GITHUB_TOKEN must be able to read both.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      INGESTION_REPO: ${INGESTION_REPO:-thanhphat2609/data-onboarding-ingestion}
+      INGESTION_REF: ${INGESTION_REF:-main}
+      TRANSFORMATION_REPO: ${TRANSFORMATION_REPO:-thanhphat2609/data-onboarding-transformation}
+      TRANSFORMATION_REF: ${TRANSFORMATION_REF:-main}
+      # Login: empty ACCOUNTS = no login, every tab open
+      ACCOUNTS: ${ACCOUNTS:-}
+      DATA_TEAM: ${DATA_TEAM:-data.team@gmail.com}
+      TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
+      WEB_RESEARCH: ${WEB_RESEARCH:-1}
+      WEBSEARCH_BROWSER: ${WEBSEARCH_BROWSER:-auto}
+      # Sessions live next to the other results, so everything the app writes is in outputs/ on the host.
+      CHECKPOINT_DB: /app/outputs/checkpoints.db
+    volumes:
+      - ../outputs:/app/outputs   # checkpoints.db, user stories, feasibility, eval reports
+    # Lets OLLAMA_HOST=http://host.docker.internal:11434 reach Ollama on the host (needed on Linux).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    init: true   # forwards Ctrl+C / docker stop to Python and reaps child processes (headless Chromium)
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:7860', timeout=4)\""]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s   # first start reads both repos from GitHub
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped

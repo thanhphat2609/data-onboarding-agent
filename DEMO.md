@@ -12,8 +12,12 @@ About 20 minutes. Goal: show the 3 things the prototype must prove (see `PLAN.md
    ```
    If a post fails during the demo, the flow keeps going and the message is saved to `outputs/<request_id>/teams_messages.jsonl` (with `webhook_error`).
 4. **Past requests** (optional): write 3–5 real past requests as YAML (format in [agent/workflow/evaluate.py](agent/workflow/evaluate.py)) and run `.venv\Scripts\python -m agent.workflow.evaluate <folder>`; read `outputs/eval/<run>/report.md` before the demo so you know where the agent goes wrong.
-5. **Reviewer key**: `$env:REVIEWER_KEY = "<key>"`, given only to whoever plays the Data Team.
-6. Start the app: `.venv\Scripts\python app.py`. Ideally use two browser windows: one as the requester, one as the Data Team.
+5. **Accounts**: one for the Data Team and one per requester, e.g.
+   ```powershell
+   $env:ACCOUNTS = "data.team@gmail.com:<password>,alice@gmail.com:<password>"
+   ```
+   `data.team@gmail.com` is the Data Team by default (`DATA_TEAM` to change it); every other account only sees Request and its own Sessions.
+6. Start the app: `.venv\Scripts\python app.py`. Use two browser windows (one private): one signed in as the requester, one as the Data Team.
 
 ## Script
 | # | Show | Point to make |

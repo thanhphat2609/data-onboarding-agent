@@ -2,7 +2,7 @@
 
 Status of each phase of the prototype plan ([PLAN.md](../PLAN.md)) plus the work added after it.
 
-> Updated: 2026-10-23. ✅ done and verified · 🟡 code exists, not yet run/verified in the real environment · ⬜ not started
+> Updated: 2026-10-24. ✅ done and verified · 🟡 code exists, not yet run/verified in the real environment · ⬜ not started
 
 ## Overview
 
@@ -75,6 +75,14 @@ To make the source known: add a source template, connection or job for it in dat
 - ✅ Same command on a laptop, a VM and GitHub Codespaces (Docker is preinstalled there)
 - ✅ `app.py --host`; `GITHUB_TOKEN` to read the two repos (in Codespaces, export your own: the preset one only reads the codespace's repo)
 - ⬜ Build and run the image in real Docker / a codespace (no Docker was available when it was written)
+- 🟡 2026-10-24: `compose.yaml` → `docker-compose.yml` like the other repos; two-stage Dockerfile (venv built separately, pip cache mount, only `agent/` + `app.py` copied); healthcheck, `init`, log rotation and `container_name` in compose
+
+## Added: Login with roles 🟡 (2026-10-24)
+> Code done and the login/role rules unit-checked; not yet clicked through in a browser (test in Codespaces).
+- 🟡 Login page when `ACCOUNTS` / `ACCOUNTS_FILE` is set (`user:password`, from env or a secret, never in the repo); no accounts = no login (local development)
+- 🟡 `DATA_TEAM` accounts (default `data.team@gmail.com`) see every tab and every session; replaces `REVIEWER_KEY`
+- 🟡 Other accounts are requesters: only **Request** and **Sessions**, and only their own sessions (`requested_by` stored with each request)
+- 🟡 Review and Settings handlers check the role on the server too; "Signed in as … · Log out" bar
 
 ## Added: UI redesign + Data Team review ✅ (2026-10-23)
 - ✅ Tabs: **💬 Request**, **🗂 Sessions**, **🛡 Data Team review**, **⚙️ Settings**, **🔧 Debug**; admin tools are out of the requester's way
@@ -117,17 +125,12 @@ To make the source known: add a source template, connection or job for it in dat
 - ✅ *Fixed 2026-10-20 by web research.* **Source without a playbook: "ok" did not trigger any investigation** (reported 2026-10-12, seen with GSC). Replying `ok` only recorded the risk and moved on, while the message read as if the agent would investigate. Reworded, and the `investigate_source` step was added. (Playbooks were replaced by the ingestion repo on 2026-10-23; a source is known once that repo can onboard it.)
 
 ## Next steps
-0. **TODO (agreed 2026-10-23, do next): login page with roles.**
-   - Simple account login in the web UI (Gradio `launch(auth=...)` + `gr.Request.username`); credentials from env / a secret, never in the repo.
-   - Account `data.team@gmail.com` = Data Team: sees every tab (Request, Sessions, Data Team review, Settings, Debug). Replaces `REVIEWER_KEY`.
-   - Any other account = requester: only **Request** (chat) and **Sessions**, and Sessions lists only that user's own sessions (store the username with each request/thread).
-   - Update docs (ARCHITECTURE Web UI, HOW_IT_WORKS roles, infrastructure README settings) and remove `REVIEWER_KEY`.
 1. Run the notebook on Colab: tool-calling test, pick a model, host the model for the web app.
-2. Build and run the Docker image (`docker compose -f infrastructure/compose.yaml up -d --build`), locally or in a codespace, with `GITHUB_TOKEN` set.
+2. Build and run the Docker image (`docker compose -f infrastructure/docker-compose.yml up -d --build`), locally or in a codespace, with `GITHUB_TOKEN` set.
 3. As the platform grows (more templates, connections, jobs, dbt models), replay a few requests with `python -m agent.workflow.evaluate <folder>` to check the recommendations.
 4. Write 3–5 real past requests as YAML (including `team_handling`), run `python -m agent.workflow.evaluate <folder>`, review `report.md` / `mistakes.csv`.
 5. Hook up the real Teams webhook (`python -m agent.integrations.teams <url>` first).
-6. Set `REVIEWER_KEY` and demo to the team following [DEMO.md](../DEMO.md): one person as requester, one as the Data Team.
+6. Set `ACCOUNTS` (one Data Team account, one per requester) and demo to the team following [DEMO.md](../DEMO.md): one person as requester, one as the Data Team.
 
 ## After the prototype
 From [PLAN.md](../PLAN.md):

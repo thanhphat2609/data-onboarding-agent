@@ -1,35 +1,56 @@
 # syntax=docker/dockerfile:1
 # Image for the web UI. Build context = repo root; normally built through compose:
-#   docker compose -f infrastructure/compose.yaml up -d --build
+#   docker compose -f infrastructure/docker-compose.yml up -d --build
+
+# ─────────────────────────────────────────────
+# Build: install the requirements into a virtualenv
+# ─────────────────────────────────────────────
+FROM python:3.12-slim-bookworm AS build
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore
+
+RUN python -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+
+# Only requirements.txt here, so a code change does not reinstall packages; the cache mount keeps
+# downloaded wheels between builds when requirements.txt does change.
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+
+# ─────────────────────────────────────────────
+# Runtime: the virtualenv + the app code, no build leftovers
+# ─────────────────────────────────────────────
 FROM python:3.12-slim-bookworm
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
+LABEL org.opencontainers.image.title="data-onboarding-agent" \
+      org.opencontainers.image.description="Web UI of the Data Onboarding Agent" \
+      org.opencontainers.image.source="https://github.com/thanhphat2609/data-onboarding-agent"
+
+ENV PATH=/opt/venv/bin:$PATH \
+    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_ROOT_USER_ACTION=ignore \
-    GRADIO_ANALYTICS_ENABLED=False
+    GRADIO_ANALYTICS_ENABLED=False \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 
-# uid 1000 matches the usual host / Codespaces user, so the bind-mounted folders stay writable.
+# uid 1000 matches the usual host / Codespaces user, so the bind-mounted outputs/ stays writable.
 RUN useradd --create-home --uid 1000 app
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+COPY --from=build /opt/venv /opt/venv
 
 # Optional headless Chromium for web research (Bing/Brave search, JavaScript-only pages); adds ~400 MB.
-#   docker compose build --build-arg WITH_BROWSER=true   (or WITH_BROWSER=true in infrastructure/.env)
+#   WITH_BROWSER=true in infrastructure/.env, then up -d --build
 ARG WITH_BROWSER=false
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 RUN if [ "$WITH_BROWSER" = "true" ]; then \
-      python -m playwright install --with-deps chromium && chmod -R a+rx /opt/ms-playwright; \
+      python -m playwright install --with-deps chromium && chmod -R a+rx /opt/ms-playwright \
+      && rm -rf /var/lib/apt/lists/*; \
     fi
 
-COPY --chown=app:app . .
-RUN mkdir -p outputs && chown app:app outputs
+WORKDIR /app
+# Only what runs: docs, notebooks and infrastructure stay out of the image.
+COPY --chown=app:app agent ./agent
+COPY --chown=app:app app.py .
+RUN mkdir outputs && chown app:app outputs
 USER app
 
 EXPOSE 7860
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860', timeout=4)"
 CMD ["python", "app.py", "--host", "0.0.0.0", "--port", "7860"]

@@ -4,16 +4,19 @@
     python app.py --share    # temporary public link (Colab / team demo)
     python app.py --host 0.0.0.0   # GitHub Codespaces / containers, see infrastructure/README.md
 
+Login (agent/auth.py): set ACCOUNTS (or ACCOUNTS_FILE) to require one. Data Team accounts (DATA_TEAM) see every tab
+and every session; other accounts are requesters and see only Request and their own Sessions.
+
 Tabs:
 - Request: chat + a step tracker, a live "Your request" card, the review panel (Approve / Request changes)
   and the finished User Story with download buttons. One chat session = one thread_id.
 - Sessions: reopen a recent session (e.g. after a Colab disconnect) from the list or by thread_id.
+- Data Team review: approve requests or ask for changes.
 - Settings: switch the Ollama host/model/API key at runtime (empty model = rule-based), e.g. a model hosted on
   Colab behind notebooks/ollama_auth_proxy.py; see what was read from the ingestion and transformation repos, and reload them.
 - Debug: raw agent state.
 """
 import argparse
-import hmac
 import html
 import json
 import re
@@ -23,13 +26,31 @@ from pathlib import Path
 import gradio as gr
 from langgraph.types import Command
 
-from agent import config, repos
+from agent import auth, config, repos
 from agent.llm import client as llm
 from agent.workflow import followup
 from agent.workflow.runner import AgentRunner
 from agent.state import REQUIRED_FIELDS
 
 runner = AgentRunner()
+
+
+# ---------- accounts ----------
+
+def _user(request: gr.Request | None) -> str:
+    """Login of the person behind this event ("" when the app has no login)."""
+    return ((request.username if request else None) or "").strip().lower()
+
+
+def _require_data_team(request: gr.Request):
+    """Tabs are hidden from requesters, but handlers check too: hidden components can still be called."""
+    if not auth.is_data_team(_user(request)):
+        raise gr.Error("Only the Data Team can do this.")
+
+
+def _owns(thread_id: str, request: gr.Request) -> bool:
+    user = _user(request)
+    return auth.is_data_team(user) or (runner.state(thread_id) or {}).get("requested_by") == user
 
 
 # ---------- HTML helpers ----------
@@ -354,7 +375,7 @@ def _run(thread_id: str, graph_input, history: list):
     yield _view(thread_id, history + [done] + _reply(ev, runner.state(thread_id)), ev)
 
 
-def on_send(message: str, thread_id: str, history: list):
+def on_send(message: str, thread_id: str, history: list, request: gr.Request):
     message = (message or "").strip()
     if not message:
         yield SKIP
@@ -367,7 +388,7 @@ def on_send(message: str, thread_id: str, history: list):
         yield from _followup(message, thread_id, history)
         return
     else:
-        thread_id, graph_input = runner.new_request(message)
+        thread_id, graph_input = runner.new_request(message, user=_user(request))
     yield from _run(thread_id, graph_input, history)
 
 
@@ -391,9 +412,9 @@ def _followup(message: str, thread_id: str, history: list):
     yield _view(thread_id, history + [{"role": "assistant", "content": reply}])
 
 
-def on_example(evt: gr.SelectData, thread_id: str, history: list):
+def on_example(evt: gr.SelectData, thread_id: str, history: list, request: gr.Request):
     text = evt.value.get("text", "") if isinstance(evt.value, dict) else str(evt.value)
-    yield from on_send(text, thread_id, history)
+    yield from on_send(text, thread_id, history, request)
 
 
 def on_poll(thread_id: str, history: list, mark: str):
@@ -428,13 +449,15 @@ def _review_queue() -> list[tuple[str, str]]:
     return choices
 
 
-def on_review_refresh():
+def on_review_refresh(request: gr.Request):
+    _require_data_team(request)
     choices = _review_queue()
     msg = f"**{len(choices)}** request(s) waiting for review." if choices else "Nothing waiting for review. 🎉"
     return gr.update(choices=choices, value=None), msg, gr.update(visible=False)
 
 
-def on_review_open(thread_id: str):
+def on_review_open(thread_id: str, request: gr.Request):
+    _require_data_team(request)
     if not thread_id:
         return gr.update(visible=False), "", "", ""
     ev = runner.current_event(thread_id)
@@ -446,7 +469,8 @@ def on_review_open(thread_id: str):
 
 
 def on_review_decision(action: str):
-    def handler(thread_id: str, comment: str):
+    def handler(thread_id: str, comment: str, request: gr.Request):
+        _require_data_team(request)
         comment = (comment or "").strip()
         keep = gr.update()
         if not thread_id or runner.current_event(thread_id)["type"] != "approval":
@@ -471,38 +495,37 @@ def on_review_decision(action: str):
     return handler
 
 
-def on_unlock(key: str):
-    if hmac.compare_digest((key or "").encode(), config.REVIEWER_KEY.encode()):
-        return gr.update(visible=False), gr.update(visible=True), *on_review_refresh()[:2]
-    gr.Warning("Wrong reviewer key.")
-    return gr.update(), gr.update(), gr.update(), gr.update()
-
-
 # ---------- sessions ----------
 
 SESSION_STATUS = {"question": "waiting for the requester's answer", "approval": "waiting for Data Team review", "done": "done", "empty": "started"}
 
 
-def _session_choices() -> list[tuple[str, str]]:
+def _session_choices(user: str) -> list[tuple[str, str]]:
+    """Recent sessions: all of them for the Data Team, a requester's own otherwise."""
+    everyone = auth.is_data_team(user)
     choices = []
-    for tid in runner.threads():
+    for tid in runner.threads(30 if everyone else 300):
         values = runner.state(tid)
-        if not values:
+        if not values or not (everyone or values.get("requested_by") == user):
             continue
         sources = ", ".join((values.get("request") or {}).get("sources", [])) or "no source yet"
         status = SESSION_STATUS.get(runner.current_event(tid)["type"], "")
+        if everyone and values.get("requested_by"):
+            status += f" · {values['requested_by']}"
         choices.append((f"{values.get('request_id', tid)} · {sources} · {status}", tid))
+        if len(choices) == 30:
+            break
     return choices
 
 
-def on_refresh_sessions():
-    return gr.update(choices=_session_choices(), value=None)
+def on_refresh_sessions(request: gr.Request):
+    return gr.update(choices=_session_choices(_user(request)), value=None)
 
 
-def on_resume(picked: str, pasted: str):
+def on_resume(picked: str, pasted: str, request: gr.Request):
     thread_id = (pasted or "").strip() or (picked or "")
     values = runner.state(thread_id) if thread_id else {}
-    if not values:
+    if not values or not _owns(thread_id, request):  # someone else's session looks the same as a missing one
         gr.Warning("Session not found. Pick one from the list or check the thread_id.")
         return (*SKIP, gr.update())
     history = [{"role": m["role"], "content": m["content"]} for m in values.get("messages", [])]
@@ -511,7 +534,8 @@ def on_resume(picked: str, pasted: str):
 
 # ---------- LLM settings ----------
 
-def on_refresh_models(host: str, api_key: str, current: str):
+def on_refresh_models(host: str, api_key: str, current: str, request: gr.Request):
+    _require_data_team(request)
     try:
         models = llm.list_models(host, api_key)
     except Exception as exc:  # noqa: BLE001
@@ -524,7 +548,8 @@ def on_refresh_models(host: str, api_key: str, current: str):
     return gr.update(choices=models, value=value), f"Found {len(models)} model(s) on `{host}`."
 
 
-def on_test(host: str, api_key: str, model: str):
+def on_test(host: str, api_key: str, model: str, request: gr.Request):
+    _require_data_team(request)
     if not model:
         return "Pick a model before testing."
     try:
@@ -534,12 +559,14 @@ def on_test(host: str, api_key: str, model: str):
     return f"✅ `{model}` replied in {secs:.1f}s: {reply}"
 
 
-def on_apply(host: str, api_key: str, model: str):
+def on_apply(host: str, api_key: str, model: str, request: gr.Request):
+    _require_data_team(request)
     llm.configure(host, model, api_key)
     return f"**In use:** {llm.status()}", _header_html()
 
 
-def on_disable(host: str):
+def on_disable(host: str, request: gr.Request):
+    _require_data_team(request)
     llm.configure(host, "")
     return f"**In use:** {llm.status()}", _header_html()
 
@@ -560,9 +587,24 @@ def _repos_md() -> str:
     return "\n".join(lines)
 
 
-def on_reload_repos():
+def on_reload_repos(request: gr.Request):
+    _require_data_team(request)
     repos.reload()
     return _repos_md(), _header_html()
+
+
+# ---------- page load ----------
+
+def on_load(request: gr.Request):
+    """Who is signed in decides the tabs: requesters get Request + Sessions, the Data Team everything."""
+    user = _user(request)
+    full = auth.is_data_team(user)
+    account = ""
+    if user:
+        role = "Data Team" if full else "Requester"
+        account = (f'<div class="account">Signed in as <b>{_esc(user)}</b> {_pill(role, "blue" if full else "neutral")}'
+                   ' <a href="logout">Log out</a></div>')
+    return account, *(gr.Tab(visible=full) for _ in range(3)), gr.update(choices=_session_choices(user), value=None)
 
 
 # ---------- layout ----------
@@ -600,6 +642,8 @@ CSS += """
 .hero h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
 .hero p { margin: 4px 0 0; color: var(--body-text-color-subdued); font-size: 14px; line-height: 1.5; }
 .hero-pills { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 6px; }
+.account { display: flex; justify-content: flex-end; align-items: center; gap: 8px; font-size: 13px; margin-top: -6px; }
+.account a { color: var(--link-text-color); }
 .pill-label { font-size: 12px; color: var(--body-text-color-subdued); margin-left: 6px; }
 
 .pill { display: inline-flex; align-items: center; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 550;
@@ -678,6 +722,8 @@ def build_ui() -> gr.Blocks:
     with gr.Blocks(title="Data Onboarding Agent") as demo:
         thread_state = gr.State("")
         header = gr.HTML(_header_html())
+        account = gr.HTML()
+        full = not auth.enabled()  # with a login, Data Team tabs stay hidden until on_load knows who it is
 
         with gr.Tabs(selected="request") as tabs:
             with gr.Tab("💬 Request", id="request"):
@@ -714,13 +760,8 @@ def build_ui() -> gr.Blocks:
                 resume_btn = gr.Button("Open session", variant="primary")
                 thread_label = gr.Textbox(label="Current thread_id", interactive=False)
 
-            with gr.Tab("🛡 Data Team review", id="review") as review_tab:
-                with gr.Group(visible=bool(config.REVIEWER_KEY)) as review_gate:
-                    gr.Markdown("### Data Team only\nEnter the reviewer key to approve requests.", elem_classes="result-title")
-                    with gr.Row(equal_height=True):
-                        reviewer_key = gr.Textbox(show_label=False, type="password", placeholder="Reviewer key", scale=4)
-                        unlock_btn = gr.Button("Unlock", variant="primary", scale=1)
-                with gr.Column(visible=not config.REVIEWER_KEY) as review_area:
+            with gr.Tab("🛡 Data Team review", id="review", visible=full) as review_tab:
+                with gr.Column():
                     review_count = gr.Markdown()
                     with gr.Row(equal_height=True):
                         review_dd = gr.Dropdown(label="Waiting for review", choices=[], scale=5)
@@ -741,7 +782,7 @@ def build_ui() -> gr.Blocks:
                                     approve_btn = gr.Button("✓ Approve", variant="primary")
                                     edit_btn = gr.Button("✎ Request changes")
 
-            with gr.Tab("⚙️ Settings", id="settings"):
+            with gr.Tab("⚙️ Settings", id="settings", visible=full) as settings_tab:
                 with gr.Row(equal_height=False):
                     with gr.Column():
                         gr.Markdown("### LLM\nRule-based works without a model; an LLM phrases questions and the User Story better.")
@@ -771,7 +812,7 @@ def build_ui() -> gr.Blocks:
                         repos_md = gr.Markdown(_repos_md())
                         reload_btn = gr.Button("↻ Reload repositories", variant="primary")
 
-            with gr.Tab("🔧 Debug", id="debug"):
+            with gr.Tab("🔧 Debug", id="debug", visible=full) as debug_tab:
                 gr.Markdown("Raw agent state of the current session.")
                 state_json = gr.Code(language="json")
 
@@ -795,8 +836,6 @@ def build_ui() -> gr.Blocks:
         decision_out = [review_msg, review_us, review_panel, review_dd, review_comment]
         approve_btn.click(on_review_decision("approve"), [review_dd, review_comment], decision_out)
         edit_btn.click(on_review_decision("edit"), [review_dd, review_comment], decision_out)
-        unlock_btn.click(on_unlock, reviewer_key, [review_gate, review_area, review_dd, review_count])
-        reviewer_key.submit(on_unlock, reviewer_key, [review_gate, review_area, review_dd, review_count])
 
         sessions_tab.select(on_refresh_sessions, None, session_dd)
         refresh_sessions.click(on_refresh_sessions, None, session_dd)
@@ -807,6 +846,7 @@ def build_ui() -> gr.Blocks:
         apply_btn.click(on_apply, [host, api_key, model], [llm_status, header])
         disable_btn.click(on_disable, host, [llm_status, header])
         reload_btn.click(on_reload_repos, None, [repos_md, header])
+        demo.load(on_load, None, [account, review_tab, settings_tab, debug_tab, session_dd])
     return demo
 
 
@@ -815,6 +855,9 @@ def launch(**kwargs):
     kwargs.setdefault("footer_links", ["gradio", "settings"])
     # Download buttons serve files from outputs/, which may live outside the working directory (OUTPUT_DIR).
     kwargs.setdefault("allowed_paths", [str(config.OUTPUT_DIR)])
+    if auth.enabled():
+        kwargs.setdefault("auth", auth.check)
+        kwargs.setdefault("auth_message", "Data Onboarding Agent: sign in with your account.")
     build_ui().launch(theme=THEME, css=CSS, **kwargs)
 
 

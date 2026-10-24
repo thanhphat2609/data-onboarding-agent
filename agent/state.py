@@ -37,6 +37,7 @@ class Request(TypedDict, total=False):
 
 class AgentState(TypedDict, total=False):
     request_id: str
+    requested_by: str  # login of the requester ("" when the web UI has no login)
     today: str  # lets old requests be replayed with a simulated "today"
     messages: Annotated[list[dict], operator.add]  # {"role": "user"|"assistant", "content": str}
     n_processed: int  # number of messages already processed by intake

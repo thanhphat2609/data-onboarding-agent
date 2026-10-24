@@ -136,21 +136,23 @@ The UI keeps no state of its own beyond the current `thread_id`: every panel is 
 | Tab | For | What it does |
 |---|---|---|
 | 💬 Request | Requester | Chat with example prompts. A step tracker (Describe → Details → Feasibility → Review → User Story), a live "Your request" card, a read-only "Waiting for Data Team review" panel, and the finished User Story with downloads |
-| 🗂 Sessions | Anyone | Reopen a recent session (from the checkpointer) or one pasted by `thread_id` |
-| 🛡 Data Team review | Data Team | Queue of requests waiting for approval; request card + feasibility; **Approve** / **Request changes**. Behind `REVIEWER_KEY` if set |
-| ⚙️ Settings | Admin | LLM host/model/API key at runtime; what was read from the two repos, reload |
-| 🔧 Debug | Developer | Raw state JSON |
+| 🗂 Sessions | Everyone | Reopen a recent session (from the checkpointer) or one pasted by `thread_id`. Requesters only see and open their own |
+| 🛡 Data Team review | Data Team | Queue of requests waiting for approval; request card + feasibility; **Approve** / **Request changes** |
+| ⚙️ Settings | Data Team | LLM host/model/API key at runtime; what was read from the two repos, reload |
+| 🔧 Debug | Data Team | Raw state JSON |
 
 While a request waits for review, the Request tab polls every 5 seconds (`gr.Timer`). It compares a fingerprint of the thread (message count + event type) and re-renders when the Data Team's decision lands.
 
-> `REVIEWER_KEY` is a soft gate, not authentication: the app has no logins. Keep the port private (see [infrastructure/README.md](../infrastructure/README.md)).
+**Login and roles** ([agent/auth.py](../agent/auth.py)). With `ACCOUNTS` (or `ACCOUNTS_FILE`) set, Gradio shows a login page (`launch(auth=...)`). Accounts listed in `DATA_TEAM` see every tab; every other account is a requester and sees only Request and Sessions. Each request stores its owner (`requested_by`, the login), and Sessions shows a requester only their own threads; opening someone else's `thread_id` reads as "not found". Hiding a tab is not enough on its own, because hidden components can still be called, so the review and Settings handlers also check the role (`_require_data_team`). Without accounts there is no login and everyone has full access (local development).
+
+> Passwords are compared in plain text from env/secret and the session cookie is Gradio's own. That is fine for a team prototype behind a private port, not for the internet (see [infrastructure/README.md](../infrastructure/README.md)).
 
 ## Deployment
 
 | Where | How | Model |
 |---|---|---|
 | Laptop (venv) | `python app.py` | Rule-based, local Ollama, or Colab via tunnel |
-| Docker (laptop / VM) | `docker compose -f infrastructure/compose.yaml up -d --build` | Same; host Ollama via `host.docker.internal` |
+| Docker (laptop / VM) | `docker compose -f infrastructure/docker-compose.yml up -d --build` | Same; host Ollama via `host.docker.internal` |
 | GitHub Codespaces | Same compose command (Docker is preinstalled) | Colab via tunnel |
 | Colab only | Notebook option B: app with `share=True` on Colab | Ollama on the Colab GPU |
 

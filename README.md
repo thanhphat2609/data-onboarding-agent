@@ -72,7 +72,7 @@ data-onboarding-agent/
 │   ├── llm/                   # optional Ollama client (client.py) + prompts/
 │   └── integrations/teams.py  # Teams webhook (or mock); `python -m agent.integrations.teams <url>` sends a test card
 ├── docs/                      # architecture, how it works, phase status
-├── infrastructure/            # Dockerfile + compose.yaml to run the UI (laptop / VM / Codespaces), see infrastructure/README.md
+├── infrastructure/            # Dockerfile + docker-compose.yml to run the UI (laptop / VM / Codespaces), see infrastructure/README.md
 ├── requirements.txt           # dependencies (Chromium for the headless browser is a separate, optional download)
 ├── DEMO.md                    # team demo runbook
 └── outputs/                   # results per request_id (gitignored)
@@ -105,7 +105,7 @@ Or activate the venv first (`.venv\Scripts\Activate.ps1`, or `source .venv/bin/a
 ## Run with Docker / GitHub Codespaces
 
 ```bash
-docker compose -f infrastructure/compose.yaml up -d --build
+docker compose -f infrastructure/docker-compose.yml up -d --build
 ```
 Then open http://127.0.0.1:7860. In GitHub Codespaces (Docker is preinstalled), open the forwarded port 7860 from the **PORTS** tab instead.
 
@@ -187,7 +187,9 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 | `CHECKPOINT_DB` | `./checkpoints.db` | |
 | `OUTPUT_DIR` | `./outputs` | |
 | `TEAMS_WEBHOOK_URL` | (empty) | Empty = mock, writes to a file |
-| `REVIEWER_KEY` | (empty) | Key for the 🛡 Data Team review tab. Empty = open to everyone |
+| `ACCOUNTS` | (empty) | Web UI logins, `user:password` pairs separated by commas. Empty = no login, every tab open |
+| `ACCOUNTS_FILE` | (empty) | Same, one `user:password` per line (e.g. a Docker secret); `#` starts a comment |
+| `DATA_TEAM` | `data.team@gmail.com` | Accounts with full access (review, Settings, Debug, every session). Others are requesters: Request + their own Sessions |
 | `WEB_RESEARCH` | `1` | `0` = no web research for sources the platform can't onboard yet (questions are still generated) |
 | `RESEARCH_MAX_PAGES` | `3` | Pages read per source |
 | `WEBSEARCH_BROWSER` | `auto` | `off` = never use the headless browser, even when Playwright is installed |
