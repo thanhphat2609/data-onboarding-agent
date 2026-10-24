@@ -81,13 +81,21 @@ def get_checkpointer(db_path: str | None = None):
 
 def _postgres_checkpointer(url: str):
     # Imported here so SQLite-only setups (Colab, tests) don't need psycopg.
+    import psycopg
     from langgraph.checkpoint.postgres import PostgresSaver
     from psycopg.rows import dict_row
-    from psycopg_pool import ConnectionPool
+    from psycopg_pool import ConnectionPool, PoolTimeout
 
     # Settings PostgresSaver requires: autocommit, no server-side prepared statements, rows as dicts.
     pool = ConnectionPool(url, min_size=1, max_size=10, open=True, kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row})
-    pool.wait(timeout=30)  # fail at startup, with a clear error, if the database is unreachable
+    try:
+        pool.wait(timeout=30)
+    except PoolTimeout:
+        # The pool only says "incomplete"; one plain connection raises the real reason
+        # (wrong password, missing database, unknown host) instead.
+        pool.close(timeout=1)
+        psycopg.connect(url, connect_timeout=10).close()
+        raise
     saver = PostgresSaver(pool)
     saver.setup()  # creates / migrates the checkpoint tables
     return saver
