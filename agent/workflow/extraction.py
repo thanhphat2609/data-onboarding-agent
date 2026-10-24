@@ -168,6 +168,36 @@ def _strip_hedges(text: str) -> str:
     return _SOURCE_HEDGE_RE.sub("", text).strip()
 
 
+_PAREN_RE = re.compile(r"\(([^)]*)\)")
+_UNSURE_RE = re.compile(r"\b(?:maybe|probably|perhaps|possibly|not sure|or|có thể|hoặc|hay là)\b")
+
+
+def clean_source(text: str) -> str:
+    """Free-text source name without guesses: "google (maybe bigquery or api from google)" -> "google",
+    while a product in parentheses stays: "google (search console)" -> "google search console"."""
+    def paren(m: re.Match) -> str:
+        inner = m.group(1).strip()
+        return "" if _UNSURE_RE.search(inner) else f" {inner}"
+
+    t = _PAREN_RE.sub(paren, norm(text))
+    return re.sub(r"\s+", " ", _strip_hedges(t)).strip(" -:")
+
+
+# A company is not a data source: ask which product. Examples are shown in the question.
+VENDOR_PRODUCTS = {
+    "google": "Google Search Console, Google Analytics 4, Google Ads, BigQuery, Google Sheets",
+    "microsoft": "Dynamics 365, SQL Server, Azure SQL Database, SharePoint, Microsoft Advertising",
+    "azure": "Azure SQL Database, Azure Data Lake Storage, Cosmos DB",
+    "amazon": "Amazon S3, Redshift, RDS, Amazon Ads, Seller Central",
+    "aws": "Amazon S3, Redshift, RDS, DynamoDB",
+    "meta": "Facebook Ads (Meta Ads), Instagram Insights",
+    "facebook": "Facebook Ads (Meta Ads), Facebook Pages Insights",
+    "adobe": "Adobe Analytics, Adobe Campaign, Marketo",
+    "oracle": "Oracle Database, NetSuite, Oracle Fusion",
+    "sap": "SAP S/4HANA, SAP BW, SuccessFactors",
+}
+
+
 def parse_field(field: str, value: str, today: date):
     """Parse the value of one field. Returns None if it cannot be parsed."""
     value = value.strip()
@@ -177,7 +207,8 @@ def parse_field(field: str, value: str, today: date):
         found = find_sources(value)
         if found:
             return found
-        raw = [_strip_hedges(norm(s)) for s in re.split(r"[,;/]| và | and ", value) if s.strip()]
+        value = _PAREN_RE.sub(lambda m: m.group(0).replace(",", " ").replace("/", " "), value)  # don't split inside (...)
+        raw = [clean_source(s) for s in re.split(r"[,;/]| và | and ", value) if s.strip()]
         return [s for s in raw if s] or None
     if field == "date_range":
         return parse_range(value, today)
@@ -275,7 +306,7 @@ def llm_extract(llm, system_prompt: str, request: dict, missing: list[str], text
             continue
         if field == "sources":
             vals = val if isinstance(val, list) else [val]
-            out[field] = find_sources(" ".join(map(str, vals))) or [norm(str(v)) for v in vals]
+            out[field] = find_sources(" ".join(map(str, vals))) or [s for v in vals if (s := clean_source(str(v)))]
         elif field == "date_range" and isinstance(val, dict):
             s, e = to_date(val.get("start")), to_date(val.get("end"))
             if s and e:
@@ -317,6 +348,11 @@ def validate(request: dict, today: date) -> tuple[dict, dict[str, str]]:
         errors["refresh_frequency"] = f"Refresh frequency must be one of {FREQUENCIES}."
     if "sources" in clean and not clean["sources"]:
         errors["sources"] = "At least one source is required."
+    elif vague := [s for s in clean.get("sources") or [] if s in VENDOR_PRODUCTS]:
+        errors["sources"] = (
+            f"“{vague[0]}” is a company, not a data source. Which product exactly? "
+            f"e.g. {VENDOR_PRODUCTS[vague[0]]}. Please list all sources again."
+        )
 
     for field in errors:
         clean.pop(field, None)
