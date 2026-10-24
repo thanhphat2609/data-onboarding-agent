@@ -83,6 +83,7 @@ To make the source known: add a source template, connection or job for it in dat
 - 🟡 `DATA_TEAM` accounts (default `data.team@gmail.com`) see every tab and every session; replaces `REVIEWER_KEY`
 - 🟡 Other accounts are requesters: only **Request** and **Sessions**, and only their own sessions (`requested_by` stored with each request)
 - 🟡 Review and Settings handlers check the role on the server too; "Signed in as … · Log out" bar
+- 🟡 2026-10-24: requesters self-register. Only the Data Team needs `ACCOUNTS`; any other email's first sign-in sets its password (scrypt hash in the `requesters` table), and a `DATA_TEAM` email can't self-register. Rules checked with an in-memory store; not yet in the browser
 
 ## Added: PostgreSQL + sessions table 🟡 (2026-10-24)
 > Code done; the SQLite path ran end to end locally (ownership and on-behalf rows checked). PostgreSQL and the compose stack are not yet run: test in Codespaces.
@@ -141,7 +142,7 @@ To make the source known: add a source template, connection or job for it in dat
 3. As the platform grows (more templates, connections, jobs, dbt models), replay a few requests with `python -m agent.workflow.evaluate <folder>` to check the recommendations.
 4. Write 3–5 real past requests as YAML (including `team_handling`), run `python -m agent.workflow.evaluate <folder>`, review `report.md` / `mistakes.csv`.
 5. Hook up the real Teams webhook (`python -m agent.integrations.teams <url>` first).
-6. Set `ACCOUNTS` (one Data Team account, one per requester) and demo to the team following [DEMO.md](../DEMO.md): one person as requester, one as the Data Team.
+6. Set `ACCOUNTS` (the Data Team account; requesters self-register) and demo to the team following [DEMO.md](../DEMO.md): one person as requester, one as the Data Team.
 
 ## After the prototype
 From [PLAN.md](../PLAN.md):

@@ -12,6 +12,7 @@ postgres 16 (container data-onboarding-postgres, volume pgdata)
 ├── platform           ← data-onboarding-ingestion run records: runs, run_events (owner: platform, from its Phase 5)
 └── onboarding_agent   ← this app (owner: agent)
     ├── sessions               one row per chat session: who, status, review   (ours, easy to query)
+    ├── requesters             self-registered logins: email, scrypt password hash, created_at (ours)
     ├── checkpoints            LangGraph: one row per graph step per session
     ├── checkpoint_blobs       LangGraph: state values (binary, msgpack)
     ├── checkpoint_writes      LangGraph: pending writes of a step (binary)
@@ -127,6 +128,15 @@ print(json.dumps(AgentRunner().state(sys.argv[1]), indent=2, ensure_ascii=False,
 ```
 
 The User Story, feasibility and Teams messages for each request are also files in `outputs/<request_id>/`.
+
+### Who signed in
+```sql
+-- Requesters who self-registered (the Data Team is configured in ACCOUNTS, not stored here)
+SELECT email, created_at FROM requesters ORDER BY created_at DESC;
+
+-- Reset a forgotten password: their next sign-in sets a new one; their sessions are kept
+DELETE FROM requesters WHERE email = 'alice@gmail.com';
+```
 
 ## Clean up test sessions
 

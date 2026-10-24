@@ -7,6 +7,8 @@ current; the checkpoints stay the source of truth for the state itself.
     created_by    login that typed the request (can be a Data Team member)
     requested_by  business owner of the request (defaults to created_by)
     reviewed_by   Data Team member who last approved / asked for changes
+
+The same database also holds `requesters`: self-registered web UI logins with their password hash (agent/auth.py).
 """
 import sqlite3
 import threading
@@ -35,6 +37,11 @@ def _schema(ts: str) -> list[str]:
         )""",
         "CREATE INDEX IF NOT EXISTS ix_sessions_requested_by ON sessions (requested_by, updated_at)",
         "CREATE INDEX IF NOT EXISTS ix_sessions_status ON sessions (status, updated_at)",
+        f"""CREATE TABLE IF NOT EXISTS requesters (
+            email         TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            created_at    {ts} NOT NULL
+        )""",
     ]
 
 
@@ -121,3 +128,17 @@ class SessionStore:
         except Exception:  # noqa: BLE001  no checkpoints table yet (fresh database, in-memory checkpointer)
             return []
         return [r["thread_id"] for r in rows]
+
+    # ---------- self-registered requesters (agent/auth.py) ----------
+
+    def requester_hash(self, email: str) -> str | None:
+        rows = self._run("SELECT password_hash FROM requesters WHERE email = ?", (email,))
+        return rows[0]["password_hash"] if rows else None
+
+    def register_requester(self, email: str, password_hash: str) -> str:
+        """Store the hash unless the email registered meanwhile; returns the hash that is stored now."""
+        self._run(
+            "INSERT INTO requesters (email, password_hash, created_at) VALUES (?, ?, ?) ON CONFLICT (email) DO NOTHING",
+            (email, password_hash, self._now()),
+        )
+        return self.requester_hash(email)

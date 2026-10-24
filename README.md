@@ -190,7 +190,7 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 | `CHECKPOINT_DB` | `./checkpoints.db` | SQLite file when `DATABASE_URL` is empty |
 | `OUTPUT_DIR` | `./outputs` | |
 | `TEAMS_WEBHOOK_URL` | (empty) | Empty = mock, writes to a file |
-| `ACCOUNTS` | (empty) | Web UI logins, `user:password` pairs separated by commas. Empty = no login, every tab open |
+| `ACCOUNTS` | (empty) | Web UI logins, `user:password` pairs separated by commas; usually only the Data Team (other emails self-register on first sign-in). Empty = no login, every tab open |
 | `ACCOUNTS_FILE` | (empty) | Same, one `user:password` per line (e.g. a Docker secret); `#` starts a comment |
 | `DATA_TEAM` | `data.team@gmail.com` | Accounts with full access (review, Settings, Debug, every session). Others are requesters: Request + their own Sessions |
 | `WEB_RESEARCH` | `1` | `0` = no web research for sources the platform can't onboard yet (questions are still generated) |

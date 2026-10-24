@@ -4,8 +4,9 @@
     python app.py --share    # temporary public link (Colab / team demo)
     python app.py --host 0.0.0.0   # GitHub Codespaces / containers, see infrastructure/README.md
 
-Login (agent/auth.py): set ACCOUNTS (or ACCOUNTS_FILE) to require one. Data Team accounts (DATA_TEAM) see every tab
-and every session; other accounts are requesters and see only Request and their own Sessions.
+Login (agent/auth.py): set ACCOUNTS (or ACCOUNTS_FILE) to require one, e.g. only the Data Team's account. Data Team
+accounts (DATA_TEAM) see every tab and every session. Any other email is a requester: it self-registers on its first
+sign-in and sees only Request and its own Sessions.
 
 Tabs:
 - Request: chat + a step tracker, a live "Your request" card, the review panel (Approve / Request changes)
@@ -62,8 +63,8 @@ def _on_behalf_of(value: str, user: str) -> str:
     value = (value or "").strip().lower()
     if not value or value == user or not auth.is_data_team(user):
         return ""
-    if auth.enabled() and value not in auth.accounts():
-        gr.Warning(f"{value} has no account yet: they'll see this session once they get one.")
+    if auth.enabled() and not auth.known(value, runner.sessions):
+        gr.Warning(f"{value} hasn't signed in yet: they'll see this session after their first sign-in.")
     return value
 
 
@@ -869,8 +870,8 @@ def launch(**kwargs):
     # Download buttons serve files from outputs/, which may live outside the working directory (OUTPUT_DIR).
     kwargs.setdefault("allowed_paths", [str(config.OUTPUT_DIR)])
     if auth.enabled():
-        kwargs.setdefault("auth", auth.check)
-        kwargs.setdefault("auth_message", "Data Onboarding Agent: sign in with your account.")
+        kwargs.setdefault("auth", lambda username, password: auth.check(username, password, runner.sessions))
+        kwargs.setdefault("auth_message", auth.LOGIN_MESSAGE)
     build_ui().launch(theme=THEME, css=CSS, **kwargs)
 
 
