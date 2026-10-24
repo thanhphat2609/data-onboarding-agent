@@ -194,7 +194,9 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 | `ACCOUNTS_FILE` | (empty) | Same, one `user:password` per line (e.g. a Docker secret); `#` starts a comment |
 | `DATA_TEAM` | `data.team@gmail.com` | Accounts with full access (review, Settings, Debug, every session). Others are requesters: Request + their own Sessions |
 | `WEB_RESEARCH` | `1` | `0` = no web research for sources the platform can't onboard yet (questions are still generated) |
-| `RESEARCH_MAX_PAGES` | `3` | Pages read per source |
+| `RESEARCH_MAX_PAGES` | `8` | Pages read per source, across all rounds |
+| `RESEARCH_ROUNDS` | `2` | Research rounds per source: planned searches, then follow-up searches on the docs site for topics still without evidence |
+| `RESEARCH_TIME_BUDGET_S` | `180` | Seconds of research per source before it stops with what it has |
 | `WEBSEARCH_BROWSER` | `auto` | `off` = never use the headless browser, even when Playwright is installed |
 | `RELEVANCE_THRESHOLD`, `ENABLE_RELEVANCE_CHECKING`, `FORCE_MULTI_ENGINE_SEARCH` | `0.3`, `true`, `false` | Search result quality check (same as web-search-mcp) |
 | `MAX_CONTENT_LENGTH`, `DEFAULT_TIMEOUT` | `500000`, `6000` (ms) | Page content limit and fetch timeout |

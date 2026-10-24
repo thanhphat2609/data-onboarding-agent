@@ -181,7 +181,18 @@ The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks
 - **Search:** Bing and Brave run only in the optional headless Chromium (Playwright), because over plain HTTP they answer automated clients with generic results or 429. DuckDuckGo runs over HTTP, plus the `ddgs` package as a last fallback. The quality check picks the first good result list.
 - **No evasion:** the browser is a normal Chromium profile. The original's fingerprint spoofing and simulated mouse movement were not ported.
 - **Cleanup:** ad and tracking elements are matched on whole class/id words, and words like "terms" or "privacy" are kept in the text (the original removed them).
-- **Speed:** a search with the browser takes several seconds (one short-lived browser per call). Research reads at most `RESEARCH_MAX_PAGES` pages.
+- **Speed:** a search with the browser takes several seconds (one short-lived browser per call).
+
+**Research in rounds** ([investigate.py](../agent/research/investigate.py)), modelled on how a person or Claude researches instead of running one search:
+
+1. **Plan:** one search per topic (access/export, history/retention, rate limits, auth) plus the official docs. Links the requester pasted are read first.
+2. **Primary sources first:** the docs site is the doc-like host found most often, preferring hosts that carry the source's name, so a connector vendor's page about the source doesn't win. Its pages rank first. Reddit, YouTube and similar sites are skipped.
+3. **Best sentences per page:** taken in turns per topic, sentences with a number ("14 months", "600 requests per minute") first, up to 4000 characters per page.
+4. **Gaps → follow-up searches:** a topic with no evidence, or history without a number, gets `site:<docs host> …` searches in the next round.
+5. **Limits per source:** `RESEARCH_MAX_PAGES` (8), `RESEARCH_ROUNDS` (2), `RESEARCH_TIME_BUDGET_S` (180 s). Round 1 uses about half the pages, so the follow-ups have room.
+6. **Show the work:** every query and its result count are in `findings["searches"]` and in the User Story, with the guessed docs site and any topic still without evidence.
+
+More searches per source means more chances for a key-less engine to rate-limit (see PHASES known issues).
 
 ## Extension points
 

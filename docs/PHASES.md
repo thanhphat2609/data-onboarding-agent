@@ -70,6 +70,8 @@ When the platform can't onboard a source and the requester replies `ok`, the `in
 The findings **never change the feasibility result** (the source stays "Needs investigation"). Only the source name + fixed keywords are sent to the search engine, never the request text. Turn it off with `WEB_RESEARCH=0`; `agent/workflow/evaluate.py` keeps it off unless you pass `--web`.
 To make the source known: add a source template, connection or job for it in data-onboarding-ingestion; the agent picks it up on reload.
 
+- 🟡 2026-10-25: **research in rounds** (it was too quick: 2 fixed queries, 3 pages, first sentences only). Now: one search per topic + official docs, docs site ranked first, best sentences per page (numbers first), follow-up `site:` searches for topics without evidence, up to 8 pages / 2 rounds / 180 s per source, every query listed in the User Story ([ARCHITECTURE.md](ARCHITECTURE.md#web-search)). Round logic checked offline with a fake search engine; ⬜ check with real searches in a codespace
+
 ## Added: Infrastructure 🟡 (2026-10-23)
 - ✅ [infrastructure/](../infrastructure/): `Dockerfile` (Python 3.12 slim, non-root, healthcheck), `compose.yaml` (localhost-only port, settings from env / `.env`, `outputs/` bind-mounted), `.env.example`, README with how to open the UI
 - ✅ Same command on a laptop, a VM and GitHub Codespaces (Docker is preinstalled there)

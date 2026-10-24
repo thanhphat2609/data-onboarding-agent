@@ -191,7 +191,8 @@ OVERALL = {
 
 
 def _research_html(f: dict) -> str:
-    parts = [f'<div class="meta">Web research: {f.get("pages_read", 0)} page(s) read, unverified.</div>']
+    searched = f'{len(f.get("searches", []))} search(es) in {f.get("rounds") or 1} round(s), ' if f.get("searches") else ""
+    parts = [f'<div class="meta">Web research: {searched}{f.get("pages_read", 0)} page(s) read, unverified.</div>']
     if f.get("summary"):
         parts.append(f'<div class="meta">{_esc(f["summary"])}</div>')
     for p in f.get("key_passages", [])[:3]:
@@ -280,7 +281,7 @@ NODE_STATUS = {
     "notify": "Notifying the Data Team…",
     "catalog_check": "Searching the dbt models…",
     "feasibility": "Checking feasibility…",
-    "investigate_source": "Reading the web docs of sources the platform can't onboard yet…",
+    "investigate_source": "Researching the web docs of sources the platform can't onboard yet (a few rounds, up to ~3 min)…",
     "draft_us": "Drafting the User Story…",
     "summary": "Sending the summary…",
 }

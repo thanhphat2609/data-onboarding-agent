@@ -1,9 +1,15 @@
 """Web research for a source the platform can't onboard yet: find its docs, read them, draft notes + questions.
 
-Finding and reading pages (no API key needed), with agent/research/websearch (port of web-search-mcp):
-  A. Links the requester pasted in the chat.
-  B. Then a web search (Bing/Brave in a headless browser if available, then DuckDuckGo).
-  Pages are read over HTTP, or in the headless browser when they need JavaScript.
+Research runs in rounds, like a person (or Claude) researching instead of a single search:
+  1. Plan: one search per topic (access/export, history/retention, limits, auth) plus the official docs.
+     Links the requester pasted are read first.
+  2. Prefer primary sources: the source's own docs site (the doc-like host found most often, preferring one
+     that carries the source's name) ranks first.
+  3. Read the best pages and keep the most useful sentences per page (numbers first, every topic represented).
+  4. Find gaps: topics with no evidence yet (or history without a number) get follow-up searches on the docs
+     site (`site:<docs host> …`), until RESEARCH_ROUNDS, RESEARCH_MAX_PAGES or RESEARCH_TIME_BUDGET_S runs out.
+  5. Show the work: every query is kept in findings["searches"] and listed in the User Story.
+Search and page reading need no API key (agent/research/websearch, a port of web-search-mcp).
 Only the source name and fixed keywords leave the machine, never the request text.
 
 Findings are UNVERIFIED. They never change the feasibility decision; they go into the User Story
@@ -11,6 +17,8 @@ and the Teams summary as research + questions for the Data Team to confirm.
 """
 import logging
 import re
+import time
+from collections import Counter
 from urllib.parse import urlparse
 
 import yaml
@@ -22,7 +30,8 @@ from agent.research import websearch
 
 log = logging.getLogger(__name__)
 
-MAX_PASSAGE_CHARS = 2000  # per page, keeps the LLM prompt small enough for a 7B model
+MAX_PASSAGE_CHARS = 4000  # per page: the most useful sentences, not the first ones
+LLM_MAX_CHARS = 9000  # all passages sent to the LLM together, small enough for a 7B model's context
 URL_RE = re.compile(r"https?://[^\s<>\"')\]]+")
 # Results from these hosts are opinions/videos, not documentation.
 SKIP_HOSTS = ("youtube.", "reddit.", "facebook.", "linkedin.", "quora.", "twitter.", "x.com", "instagram.", "tiktok.com/@")
@@ -35,6 +44,22 @@ TOPICS = {
     "access": ["export", "reporting api", "report api", "endpoint", "bigquery", "s3", "sftp", "granularity", "dimensions", "metrics"],
 }
 NUMBER_UNIT_RE = re.compile(r"\b\d+\s*(?:day|month|year)s?\b", re.I)
+
+# Round 1: one search per topic plus the official docs. Fixed words only: the request text never leaves the machine.
+DOCS_QUERY = "{source} developer documentation"
+TOPIC_QUERIES = {
+    "access": "{source} API export data documentation",
+    "history": "{source} data retention how far back historical data",
+    "limits": "{source} API rate limits quota",
+    "auth": "{source} API authentication access",
+}
+# Later rounds: what to look for on the docs site for a topic that still has no evidence.
+FOLLOW_UP = {
+    "access": "export API reporting data",
+    "history": "data retention historical data",
+    "limits": "rate limits quotas",
+    "auth": "authentication OAuth API key",
+}
 
 
 def slug(source: str) -> str:
@@ -61,22 +86,39 @@ def _rank(url: str) -> int:
     return sum(h in host for h in DOC_HINTS) * 2 + sum(f"/{h}" in path for h in DOC_HINTS)
 
 
-def search_links(source: str, max_results: int) -> tuple[list[str], str | None]:
-    """Web search, no key. Returns (urls, error)."""
-    queries = [f"{source} API documentation reporting data", f"{source} API data retention historical data limit"]
-    urls: list[str] = []
-    errors: list[str] = []
-    for q in queries:
-        try:
-            urls += [r.url for r in websearch.search(q, 6).results]
-        except Exception as exc:  # noqa: BLE001 — key-less search can fail or be rate-limited: just "no results"
-            log.warning("Web search failed for %s: %s", source, exc)
-            errors.append(str(exc))
-    if not urls:
-        return [], "web search found nothing" + (f" ({errors[0]})" if errors else " (search engines may be rate-limiting this network)")
-    urls = [u for u in dict.fromkeys(urls) if not any(h in u.lower() for h in SKIP_HOSTS)]
-    urls.sort(key=_rank, reverse=True)  # stable: keeps search order among equally ranked results
-    return urls[:max_results], None
+def _search(query: str, findings: dict, round_no: int, errors: list[str], n: int = 6) -> list[str]:
+    """One key-less web search, logged in findings["searches"]. Failures (rate limits) just mean no results."""
+    try:
+        urls = [r.url for r in websearch.search(query, n).results]
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Web search failed for %r: %s", query, exc)
+        errors.append(str(exc))
+        urls = []
+    findings["searches"].append({"round": round_no, "query": query, "results": len(urls)})
+    return [u for u in urls if not any(h in u.lower() for h in SKIP_HOSTS)]
+
+
+def _docs_host(urls: list[str], source: str) -> str | None:
+    """The source's own docs site: the doc-like host found most often, preferring hosts that carry the source's name
+    (so a connector vendor's page about the source doesn't win)."""
+    tokens = [t for t in slug(source).split("_") if len(t) > 2]
+    counts = Counter(urlparse(u).netloc.lower() for u in urls if _rank(u) > 0)
+    if not counts:
+        return None
+    return max(counts, key=lambda h: (any(t in h for t in tokens), counts[h]))
+
+
+def _priority(url: str, docs_host: str | None) -> int:
+    return (urlparse(url).netloc.lower() == docs_host) * 10 + _rank(url)
+
+
+def _missing_topics(pages: list[dict]) -> list[str]:
+    """Topics with no evidence yet; history also counts as missing while no passage gives a number."""
+    found = [p for pg in pages for p in pg.get("passages", [])]
+    missing = [t for t in TOPICS if not any(p["topic"] == t for p in found)]
+    if "history" not in missing and not any(p["topic"] == "history" and p["has_number"] for p in found):
+        missing.append("history")
+    return missing
 
 
 # ---------- reading pages ----------
@@ -90,8 +132,10 @@ def fetch_page(url: str) -> dict:
 
 
 def passages(text: str) -> list[dict]:
-    """Sentences that mention a research topic, tagged with the topic."""
-    out, seen, total = [], set(), 0
+    """The most useful sentences that mention a research topic, tagged with the topic: taken in turns per topic,
+    sentences with a number (e.g. "14 months") first, up to MAX_PASSAGE_CHARS for the page."""
+    by_topic: dict[str, list[dict]] = {t: [] for t in TOPICS}
+    seen = set()
     for line in text.split("\n"):
         for sent in re.split(r"(?<=[.!?])\s+", line):
             s = sent.strip()
@@ -102,10 +146,18 @@ def passages(text: str) -> list[dict]:
             if not topic:
                 continue
             seen.add(low)
-            out.append({"topic": topic, "text": s, "has_number": bool(NUMBER_UNIT_RE.search(s))})
-            total += len(s)
-            if total > MAX_PASSAGE_CHARS:
-                return out
+            by_topic[topic].append({"topic": topic, "text": s, "has_number": bool(NUMBER_UNIT_RE.search(s))})
+    for cands in by_topic.values():
+        cands.sort(key=lambda p: not p["has_number"])  # stable: page order among equals
+    out, total = [], 0
+    while any(by_topic.values()):
+        for cands in by_topic.values():
+            if not cands:
+                continue
+            p = cands.pop(0)
+            if total + len(p["text"]) <= MAX_PASSAGE_CHARS:
+                out.append(p)
+                total += len(p["text"])
     return out
 
 
@@ -145,9 +197,17 @@ def _llm_findings(source: str, pages: list[dict]) -> dict:
     read = [p for p in pages if p.get("passages")]
     if not llm or not read:
         return {}
-    body = "\n\n".join(
-        f"[{i}] {p['url']}\n" + "\n".join(f"- {x['text']}" for x in p["passages"]) for i, p in enumerate(read, 1)
-    )
+    # Pages in turns, best passages first, so every page gets a say within LLM_MAX_CHARS.
+    lines = {i: [] for i in range(1, len(read) + 1)}
+    queues = {i: list(p["passages"]) for i, p in enumerate(read, 1)}
+    total = 0
+    while any(queues.values()) and total < LLM_MAX_CHARS:
+        for i, q in queues.items():
+            if q and total < LLM_MAX_CHARS:
+                text = q.pop(0)["text"]
+                lines[i].append(f"- {text}")
+                total += len(text)
+    body = "\n\n".join(f"[{i}] {p['url']}\n" + "\n".join(lines[i]) for i, p in enumerate(read, 1) if lines[i])
     gen = safe_call(llm.complete_json, load_prompt("investigate_source"), f"Source: {source}\n\n{body}", default={}) or {}
     urls = {str(i): p["url"] for i, p in enumerate(read, 1)}
     methods = []
@@ -191,24 +251,73 @@ def draft_source_notes(source: str, findings: dict) -> str:
     return header + yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
 
 
-def investigate(source: str, request: dict, messages: list[dict]) -> dict:
-    """Research one source. Never raises: network problems end up in `notes`."""
-    findings = {"source": source, "pages": [], "pages_read": 0, "key_passages": [], "summary": "", "access_methods": [], "notes": []}
-    if config.WEB_RESEARCH:
-        candidates = [(u, "requester") for u in links_from_messages(messages, source, request.get("sources", []))]
-        if len(candidates) < config.RESEARCH_MAX_PAGES:
-            found, err = search_links(source, config.RESEARCH_MAX_PAGES)
-            candidates += [(u, "web search") for u in found]
-            if err:
-                findings["notes"].append(err)
-        seen = set()
+def _research(source: str, request: dict, messages: list[dict], findings: dict) -> None:
+    """The rounds described in the module docstring; fills findings["pages"], ["searches"], ["docs_site"], ["rounds"]."""
+    started = time.monotonic()
+    errors: list[str] = []
+    seen: set[str] = set()
+
+    def time_left() -> bool:
+        return time.monotonic() - started < config.RESEARCH_TIME_BUDGET_S
+
+    def read(candidates: list[tuple[str, str]], limit: int, round_no: int) -> None:
         for url, origin in candidates:
-            if url in seen or len(seen) >= config.RESEARCH_MAX_PAGES:
+            if limit <= 0 or len(seen) >= config.RESEARCH_MAX_PAGES or not time_left():
+                return
+            if url in seen:
                 continue
             seen.add(url)
-            page = {**fetch_page(url), "origin": origin}
+            limit -= 1
+            page = {**fetch_page(url), "origin": origin, "round": round_no}
             page["passages"] = passages(page.pop("text", "")) if not page.get("error") else []
             findings["pages"].append(page)
+
+    # Round 1: plan one search per topic, read the best pages; keep some page budget for the follow-ups.
+    pasted = links_from_messages(messages, source, request.get("sources", []))
+    found: list[str] = []
+    for query in [DOCS_QUERY, *TOPIC_QUERIES.values()]:
+        if time_left():
+            found += _search(query.format(source=source), findings, 1, errors)
+    found = list(dict.fromkeys(found))
+    docs_host = _docs_host(found, source)
+    findings["docs_site"] = docs_host
+    found.sort(key=lambda u: _priority(u, docs_host), reverse=True)  # stable: search order among equals
+    first_round = max(3, config.RESEARCH_MAX_PAGES // 2) if config.RESEARCH_ROUNDS > 1 else config.RESEARCH_MAX_PAGES
+    read([(u, "requester") for u in pasted] + [(u, "web search") for u in found], first_round, 1)
+    findings["rounds"] = 1
+
+    # Later rounds: search again, on the docs site, only for what is still missing.
+    for round_no in range(2, config.RESEARCH_ROUNDS + 1):
+        missing = _missing_topics(findings["pages"])
+        if not missing or len(seen) >= config.RESEARCH_MAX_PAGES or not time_left():
+            break
+        more: list[str] = []
+        for topic in missing:
+            query = f"site:{docs_host} {FOLLOW_UP[topic]}" if docs_host else f"{source} {FOLLOW_UP[topic]} documentation"
+            if time_left():
+                more += _search(query, findings, round_no, errors)
+        more = sorted(dict.fromkeys(more), key=lambda u: _priority(u, docs_host), reverse=True)
+        read([(u, "follow-up search") for u in more], 2 * len(missing), round_no)
+        findings["rounds"] = round_no
+
+    if not found and not pasted and not any(s["results"] for s in findings["searches"]):
+        findings["notes"].append(
+            "web search found nothing" + (f" ({errors[0]})" if errors else " (search engines may be rate-limiting this network)")
+        )
+    if not time_left():
+        findings["notes"].append(f"research stopped at the time budget ({config.RESEARCH_TIME_BUDGET_S} s)")
+    if missing := _missing_topics(findings["pages"]):
+        findings["notes"].append("no evidence found for: " + ", ".join(missing))
+
+
+def investigate(source: str, request: dict, messages: list[dict]) -> dict:
+    """Research one source. Never raises: network problems end up in `notes`."""
+    findings = {
+        "source": source, "pages": [], "pages_read": 0, "key_passages": [], "summary": "", "access_methods": [],
+        "notes": [], "searches": [], "docs_site": None, "rounds": 0,
+    }
+    if config.WEB_RESEARCH:
+        _research(source, request, messages, findings)
         findings["pages_read"] = sum(1 for p in findings["pages"] if p["passages"])
         findings["key_passages"] = _key_passages(findings["pages"])
         findings.update(_llm_findings(source, findings["pages"]))

@@ -54,7 +54,11 @@ TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")
 # Web research for sources the platform can't onboard yet (agent/research/). WEB_RESEARCH=0 turns it off
 # (questions for the Data Team are still generated).
 WEB_RESEARCH = os.getenv("WEB_RESEARCH", "1").strip().lower() not in ("0", "false", "no", "off")
-RESEARCH_MAX_PAGES = int(os.getenv("RESEARCH_MAX_PAGES", "3"))
+# Research runs in rounds: search per topic, read the best pages (official docs first), then search again for the
+# topics still without evidence. Limits per source: pages read in total, rounds, and seconds.
+RESEARCH_MAX_PAGES = int(os.getenv("RESEARCH_MAX_PAGES", "8"))
+RESEARCH_ROUNDS = int(os.getenv("RESEARCH_ROUNDS", "2"))
+RESEARCH_TIME_BUDGET_S = int(os.getenv("RESEARCH_TIME_BUDGET_S", "180"))
 
 # Max fields asked per turn, to stay within the <= 5 turns target.
 MAX_FIELDS_PER_QUESTION = 3

@@ -42,6 +42,10 @@ def research_section(research: dict) -> list[str]:
             lines.append("- Pages read: " + ", ".join(f"[{p['title'][:60]}]({p['url']}) ({p['origin']})" for p in read))
         if failed:
             lines.append("- Could not read: " + ", ".join(f"{p['url']} ({p['error'][:80]})" for p in failed))
+        if f.get("docs_site"):
+            lines.append(f"- Official docs site (guessed): `{f['docs_site']}`")
+        if f.get("searches"):
+            lines.append("- Searches: " + "; ".join(f"round {s['round']}: `{s['query']}` ({s['results']})" for s in f["searches"]))
         lines += [f"- Note: {n}" for n in f.get("notes") or []]
         if f.get("source_notes"):
             lines.append(f"- Draft source notes: `{f['source_notes']}`")
