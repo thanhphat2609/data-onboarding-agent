@@ -5,13 +5,6 @@
 # Settings come from shell env vars (e.g. Codespaces secrets) or infrastructure/.env (copy .env.example).
 name: data-onboarding-agent
 
-# Upstream DNS for the containers. Docker's default resolver sometimes can't resolve public names in
-# Docker-in-Docker (GitHub Codespaces: "DNS lookup of api.github.com failed"). Service names (postgres) still
-# resolve through Docker's own DNS. On a network that blocks public DNS, set DNS_1 / DNS_2 to its resolvers.
-x-dns: &dns
-  - ${DNS_1:-1.1.1.1}
-  - ${DNS_2:-8.8.8.8}
-
 services:
   # ─────────────────────────────────────────────
   # PostgreSQL: the platform's one server, one database per owner (postgres/init/01-databases.sh)
@@ -90,7 +83,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    dns: *dns
     # Lets OLLAMA_HOST=http://host.docker.internal:11434 reach Ollama on the host (needed on Linux).
     extra_hosts:
       - "host.docker.internal:host-gateway"

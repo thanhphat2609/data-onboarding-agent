@@ -90,7 +90,7 @@ To make the source known: add a source template, connection or job for it in dat
 - 🟡 `DATABASE_URL` → `PostgresSaver` on a psycopg pool; without it SQLite as before (laptop, Colab)
 - 🟡 `sessions` table ([sessions.py](../agent/workflow/sessions.py)) in the same database: Sessions list, review queue and ownership checks are SQL instead of loading every thread; existing sessions are backfilled on start
 - 🟡 `requested_by` (owner) vs `created_by` (who typed it) vs `reviewed_by`: the Data Team can file a request **on behalf of** a requester
-- 🟡 DNS fix: the `app` container uses `DNS_1` / `DNS_2` (default 1.1.1.1 / 8.8.8.8) for the Codespaces "DNS lookup of api.github.com failed"
+- ❌ DNS fix with `DNS_1` / `DNS_2` (default 1.1.1.1 / 8.8.8.8), v0.6.0: public resolvers don't answer from a Codespace's Docker, so GitHub lookups still failed and PostgreSQL connections hung on libpq's Kerberos lookups. Removed in v0.6.1: Docker's default DNS again, and `gssencmode=disable` for PostgreSQL. 🟡 GitHub DNS in Codespaces still to check
 - ⬜ Run in a codespace: `up -d --build`, a full request + approval, then the queries in [POSTGRESQL.md](POSTGRESQL.md)
 
 ## Added: UI redesign + Data Team review ✅ (2026-10-23)

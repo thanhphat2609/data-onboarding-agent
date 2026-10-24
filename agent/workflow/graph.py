@@ -86,15 +86,21 @@ def _postgres_checkpointer(url: str):
     from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool, PoolTimeout
 
+    # gssencmode=disable: libpq otherwise tries Kerberos first, whose own DNS lookups hang the connection
+    # when the container's upstream DNS doesn't answer (seen in GitHub Codespaces).
+    connect = {"connect_timeout": 10, "gssencmode": "disable"}
     # Settings PostgresSaver requires: autocommit, no server-side prepared statements, rows as dicts.
-    pool = ConnectionPool(url, min_size=1, max_size=10, open=True, kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row})
+    pool = ConnectionPool(
+        url, min_size=1, max_size=10, open=True,
+        kwargs={**connect, "autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+    )
     try:
         pool.wait(timeout=30)
     except PoolTimeout:
         # The pool only says "incomplete"; one plain connection raises the real reason
         # (wrong password, missing database, unknown host) instead.
         pool.close(timeout=1)
-        psycopg.connect(url, connect_timeout=10).close()
+        psycopg.connect(url, **connect).close()
         raise
     saver = PostgresSaver(pool)
     saver.setup()  # creates / migrates the checkpoint tables

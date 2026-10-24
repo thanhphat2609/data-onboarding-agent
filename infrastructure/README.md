@@ -5,7 +5,7 @@ The web UI runs in Docker. One `Dockerfile` and one `docker-compose.yml` cover a
 ```
 infrastructure/
 ├── Dockerfile          # two stages: requirements into a venv, then slim runtime + agent/ + app.py; port 7860
-├── docker-compose.yml  # app (builds the image, port, settings, outputs/, DNS) + postgres (sessions, Airflow metadata DB)
+├── docker-compose.yml  # app (builds the image, port, settings, outputs/) + postgres (sessions, Airflow metadata DB)
 ├── postgres/init/      # first-start script: databases onboarding_agent + airflow, one role each
 ├── .env.example        # settings template; copy to .env (gitignored)
 └── README.md           # this file
@@ -47,8 +47,6 @@ cp infrastructure/.env.example infrastructure/.env      # PowerShell: Copy-Item 
 | `POSTGRES_PASSWORD`, `POSTGRES_AGENT_PASSWORD`, `POSTGRES_AIRFLOW_PASSWORD`, `POSTGRES_PLATFORM_PASSWORD` | Passwords of the `postgres` superuser and the `agent`, `airflow` and `platform` roles (defaults: the role name; the port is localhost-only). Read **only on the first start**, when the `pgdata` volume is empty. Use URL-safe characters. The ingestion repo's `.env` repeats the last two as `AIRFLOW_DB_PASSWORD` / `PLATFORM_DB_PASSWORD` |
 | `POSTGRES_PORT` | Host port of PostgreSQL, default `5432` |
 | `DATABASE_URL` | Override to use an external PostgreSQL instead of the `postgres` container |
-| `DNS_1`, `DNS_2` | DNS servers the app container uses, default `1.1.1.1` / `8.8.8.8` (fixes Docker-in-Docker DNS in Codespaces). On a company network that blocks public DNS, set them to its resolvers |
-
 Env vars already set in your shell override `.env`, so Codespaces secrets with these names are picked up automatically.
 
 ### 2. Start
@@ -115,7 +113,7 @@ The port is published on **127.0.0.1 only** because the app's login is only a pr
 | Codespaces: port 7860 not in PORTS | Check with `docker compose -f infrastructure/docker-compose.yml ps`. If it's running, add it by hand: PORTS → **Forward a Port** → `7860` |
 | Linux / VM: `Permission denied` writing `outputs/` | The container runs as uid 1000. Run `sudo chown -R 1000:1000 outputs` |
 | `Fetch models` fails | The Colab tab is closed or the tunnel URL changed. Re-run notebook step 4. For host Ollama, use `host.docker.internal`, not `localhost` |
-| Settings → Repositories: "DNS lookup of api.github.com failed" | The container has no working DNS; the token is not the problem. The `app` service now uses `DNS_1` / `DNS_2` (default 1.1.1.1 / 8.8.8.8). Check with `docker compose -f infrastructure/docker-compose.yml exec app python -c "import socket; print(socket.gethostbyname('api.github.com'))"`. If it still fails, those servers are blocked on this network: set `DNS_1` / `DNS_2` to its resolvers (`cat /etc/resolv.conf` on the host), then `up -d`. The agent retries a failed load by itself after 60 s |
+| Settings → Repositories: "DNS lookup of api.github.com failed" | The container has no working DNS; the token is not the problem. Containers use Docker's default DNS (the host's resolver). Public resolvers such as 1.1.1.1 / 8.8.8.8 do **not** answer from a Codespace's Docker (tested 2026-10-24), so don't hard-code them. Check with `docker compose -f infrastructure/docker-compose.yml exec app python -c "import socket; print(socket.gethostbyname('api.github.com'))"` and compare with `cat /etc/resolv.conf` / `getent hosts api.github.com` on the host. The agent retries a failed load by itself after 60 s |
 | `app` waits forever / `dependency failed to start: container data-onboarding-postgres is unhealthy` | `docker compose -f infrastructure/docker-compose.yml logs postgres`. An init-script error (e.g. `$'\r': command not found` = the script was checked out with Windows line endings) means the databases weren't created. Fix it, then `down -v` (**deletes the database**) and `up -d` |
 | `network data-platform was found but has incorrect label` | The ingestion repo's `bootstrap.sh` created the network first (standalone mode). Stop the ingestion stack, `docker network rm data-platform`, start this stack, then the ingestion stack |
 | `password authentication failed for user "agent"` | The passwords in `.env` changed after the first start; the volume keeps the old ones. `ALTER ROLE agent PASSWORD '…'` as `postgres`, or `down -v` on a throwaway setup |
