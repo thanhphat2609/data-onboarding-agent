@@ -151,7 +151,7 @@ Same two stages as data-onboarding-ingestion ([its ADR-0012](https://github.com/
 
 > **Where we left off (2026-10-25).** v0.7.0 runs in Codespaces: PostgreSQL sessions, login (only the Data Team in `ACCOUNTS`, requesters self-register), Codespaces secrets `PLATFORM_GITHUB_TOKEN` + `ACCOUNTS`, firewall fix on every codespace start. On `main` after v0.7.0, not tagged yet: research in rounds, the source name as an exact phrase, "which product?" for a company name.
 > **To pick up:** (1) after any `git pull`, run `docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`, because the code lives in the image; (2) with a **new** request for a source the platform lacks (e.g. Google Search Console), check the User Story's *Web research* section: searches, kept/off-topic counts, docs site, passages; (3) if it looks right, tag **v0.8.0**; if engines rate-limit (searches with `(0 / 0)`), consider a search API with a key.
-> Paused to work on data-onboarding-ingestion: its ADR-0011 (shared PostgreSQL hosted by this repo's stack, `local-db` profile when standalone) is written but uncommitted there.
+> 2026-10-26: CI runs on every push (green); the Deploy workflow is ready, run by hand as the approval, off until VM 1 exists ([infrastructure/prod/README.md](../infrastructure/prod/README.md)). data-onboarding-ingestion committed its ADR-0011 and expects this stack to host the shared PostgreSQL server; on VM 1 deploy this repo first.
 
 1. Run the notebook on Colab: tool-calling test, pick a model, host the model for the web app.
 2. Build and run the Docker image (`docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`), locally or in a codespace, with `PLATFORM_GITHUB_TOKEN` set (Codespaces secret).
