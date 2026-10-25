@@ -13,10 +13,9 @@ deploy.sh            run on VM 1 by the Deploy workflow: checkout <sha>, build, 
 | Stage | Trigger | What runs |
 |---|---|---|
 | 1. CI (`.github/workflows/ci.yml`) | Pull request or push to `main` | Ruff (errors only), compile, `import app`, Compose files, image build (not pushed) |
-| 2. Deploy (`.github/workflows/deploy.yml`) | CI green on a push to `main` | VM 1: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune old images and week-old build cache |
-| Manual | Actions → Deploy → Run workflow | Like stage 2 for any commit; `no_cache` rebuilds every layer |
+| 2. Deploy (`.github/workflows/deploy.yml`), approval | Someone runs **Actions → Deploy → Run workflow** on `main` | Checks the commit is on `main` with a green CI run, then VM 1: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune old images and week-old build cache |
 
-No approval step: a push to `main` that passes CI goes to prod. A failing CI run stops it; review changes in pull requests before they reach `main`.
+**Approving a deploy** = running the workflow: Actions → Deploy → Run workflow → branch `main` → optionally a commit (`sha`, default the latest `main`) and `no_cache` → Run. A commit without a green CI run is refused. A push alone deploys nothing.
 
 PostgreSQL is not recreated by a deploy unless its settings change. Deploy this repository **before** data-onboarding-ingestion on a new VM: it creates the `data-platform` network and the database server.
 
