@@ -14,7 +14,7 @@ infrastructure/
 └── README.md               # this file
 ```
 
-Prod differs from non-prod in what it enforces: required passwords, `ACCOUNTS` and `PLATFORM_GITHUB_TOKEN` (`${…:?}`), and backups of the `pgdata` volume. The image is built on the VM by the Deploy workflow after a reviewer approves; CI checks every push to `main` first ([prod/README.md](prod/README.md)).
+Prod differs from non-prod in what it enforces: required passwords, `ACCOUNTS` and `PLATFORM_GITHUB_TOKEN` (`${…:?}`), and backups of the `pgdata` volume. The image is built on the VM by the Deploy workflow on every push to `main` that passes CI ([prod/README.md](prod/README.md)).
 
 ```
  Browser                Docker host (laptop / VM / codespace)                Google Colab (GPU), optional

@@ -10,11 +10,13 @@ deploy.sh            run on VM 1 by the Deploy workflow: checkout <sha>, build, 
 
 ## How a change reaches prod
 
-| Stage | Trigger | What runs | Approval |
-|---|---|---|---|
-| 1. CI (`.github/workflows/ci.yml`) | Pull request or push to `main` | Ruff (errors only), compile, `import app`, Compose files, image build (not pushed) | No |
-| 2. Deploy (`.github/workflows/deploy.yml`) | CI green on `main` | VM 1: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune old images and week-old build cache | **Yes**, environment `production` |
-| Manual | Actions → Deploy → Run workflow | Like stage 2 for any commit; `no_cache` rebuilds every layer | Yes |
+| Stage | Trigger | What runs |
+|---|---|---|
+| 1. CI (`.github/workflows/ci.yml`) | Pull request or push to `main` | Ruff (errors only), compile, `import app`, Compose files, image build (not pushed) |
+| 2. Deploy (`.github/workflows/deploy.yml`) | CI green on a push to `main` | VM 1: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune old images and week-old build cache |
+| Manual | Actions → Deploy → Run workflow | Like stage 2 for any commit; `no_cache` rebuilds every layer |
+
+No approval step: a push to `main` that passes CI goes to prod. A failing CI run stops it; review changes in pull requests before they reach `main`.
 
 PostgreSQL is not recreated by a deploy unless its settings change. Deploy this repository **before** data-onboarding-ingestion on a new VM: it creates the `data-platform` network and the database server.
 
@@ -40,14 +42,6 @@ Secrets and variables are per repository: set them here **and** in data-onboardi
 | `PROD_SSH_PORT` | `22` | SSH port of the VM (default `22`) |
 
 Variables are not secret: they show in the logs. Anything secret goes in Secrets.
-
-### Environment (Settings → Environments → New environment)
-
-An environment is a named deployment target with its own protection rules. A job that says `environment: production` stops and waits until one of the required reviewers clicks **Review deployments → Approve** on the workflow run. That is the approval of stage 2.
-
-| Name | Settings to tick |
-|---|---|
-| `production` | **Required reviewers**: add the people who may approve (up to 6; one approval is enough). **Prevent self-review** if the person who pushes should not approve their own change. **Deployment branches and tags**: *Selected branches* → `main` |
 
 ### Branch protection (Settings → Rules → Rulesets, or Branches)
 

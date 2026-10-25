@@ -19,7 +19,7 @@ Status of each phase of the prototype plan ([PLAN.md](../PLAN.md)) plus the work
 | Added: UI redesign + Data Team review | Friendlier UI; approval by the Data Team only | ✅ Tested locally in a browser |
 | Added: Knowledge from the platform repos | No sample data; the agent reads the two repos | ✅ 5/5 scenarios against the real repos |
 | Added: Web search port + code layout | Python port of web-search-mcp (module + MCP server); `agent/` in functional folders | ✅ Tested live (search, pages, research, MCP over stdio) |
-| Added: CI/CD | Checks on every push; approved deploy to VM 1 | 🟡 CI written (runs on GitHub); deploy waits for VM 1 |
+| Added: CI/CD | Checks on every push; push to `main` deploys VM 1 | 🟡 CI written (runs on GitHub); deploy waits for VM 1 |
 
 ---
 
@@ -143,9 +143,9 @@ To make the source known: add a source template, connection or job for it in dat
 ## Added: CI/CD 🟡 (2026-10-26)
 Same two stages as data-onboarding-ingestion ([its ADR-0012](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0012-cicd-ssh-deploy.md)); setup in [infrastructure/prod/README.md](../infrastructure/prod/README.md).
 - 🟡 [ci.yml](../.github/workflows/ci.yml) on every pull request and push to `main`: ruff (runtime errors only), compile, `import app`, Compose files valid, image builds. Checked locally: ruff and `import app` pass
-- 🟡 [deploy.yml](../.github/workflows/deploy.yml) after CI on `main`: waits for approval (environment `production`), then over SSH on VM 1 `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune old images and build cache. Off until the variable `PROD_DEPLOY_ENABLED` is `true`
+- 🟡 [deploy.yml](../.github/workflows/deploy.yml) after CI passes on a push to `main` (no approval step): over SSH on VM 1 `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune old images and build cache. Off until the variable `PROD_DEPLOY_ENABLED` is `true`
 - 🟡 [infrastructure/prod/](../infrastructure/prod/): compose for VM 1 (postgres + app, required passwords, creates `data-platform`), `.env.example`, `deploy.sh`
-- ⬜ When VM 1 exists: GitHub secrets, variables and environment from the prod README, then the first deploy (this repo before data-onboarding-ingestion)
+- ⬜ When VM 1 exists: GitHub secrets and variables from the prod README, then the first deploy (this repo before data-onboarding-ingestion)
 
 ## Next steps
 
