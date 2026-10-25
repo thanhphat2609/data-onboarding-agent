@@ -1,0 +1,91 @@
+# Prod on VM 1: the agent's web UI + the platform's shared PostgreSQL server (databases onboarding_agent, airflow,
+# platform). data-onboarding-ingestion's Airflow on the same VM joins the `data-platform` network created here,
+# so this stack starts first. Deployed by infrastructure/prod/deploy.sh from the Deploy workflow.
+# DRAFT until VM 1 exists. Differences from non-prod: every password and ACCOUNTS required, no defaults.
+name: data-onboarding-agent
+
+services:
+  postgres:
+    image: postgres:16.15-alpine   # same pin as data-onboarding-ingestion
+    container_name: data-onboarding-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      AGENT_DB_PASSWORD: ${POSTGRES_AGENT_PASSWORD:?}
+      AIRFLOW_DB_PASSWORD: ${POSTGRES_AIRFLOW_PASSWORD:?}
+      PLATFORM_DB_PASSWORD: ${POSTGRES_PLATFORM_PASSWORD:?}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../postgres/init:/docker-entrypoint-initdb.d:ro
+    # Localhost only: backups and psql from the VM. Airflow uses the data-platform network.
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    networks: [default, platform]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d onboarding_agent"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ../..
+      dockerfile: infrastructure/Dockerfile
+      args:
+        WITH_BROWSER: ${WITH_BROWSER:-false}
+    image: data-onboarding-agent:prod
+    container_name: data-onboarding-agent
+    # Localhost only: users come through a reverse proxy with TLS (or an SSH tunnel) on VM 1.
+    ports:
+      - "127.0.0.1:${UI_PORT:-7860}:7860"
+    environment:
+      OLLAMA_HOST: ${OLLAMA_HOST:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      PLATFORM_GITHUB_TOKEN: ${PLATFORM_GITHUB_TOKEN:?read-only token for the two platform repos}
+      INGESTION_REPO: ${INGESTION_REPO:-thanhphat2609/data-onboarding-ingestion}
+      INGESTION_REF: ${INGESTION_REF:-main}
+      TRANSFORMATION_REPO: ${TRANSFORMATION_REPO:-thanhphat2609/data-onboarding-transformation}
+      TRANSFORMATION_REF: ${TRANSFORMATION_REF:-main}
+      ACCOUNTS: ${ACCOUNTS:?Data Team logins, user:password}
+      DATA_TEAM: ${DATA_TEAM:?Data Team emails}
+      TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
+      WEB_RESEARCH: ${WEB_RESEARCH:-1}
+      WEBSEARCH_BROWSER: ${WEBSEARCH_BROWSER:-auto}
+      DATABASE_URL: postgresql://agent:${POSTGRES_AGENT_PASSWORD:?}@postgres:5432/onboarding_agent
+    volumes:
+      - ../../outputs:/app/outputs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    init: true
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:7860', timeout=4)\""]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+
+networks:
+  default: {}
+  # Shared with data-onboarding-ingestion's Airflow on VM 1 (its compose declares it external).
+  platform:
+    name: data-platform
+
+volumes:
+  pgdata:   # every platform database; back it up with pg_dump per database

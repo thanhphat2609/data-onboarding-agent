@@ -2,7 +2,7 @@
 
 Status of each phase of the prototype plan ([PLAN.md](../PLAN.md)) plus the work added after it.
 
-> Updated: 2026-10-24. ✅ done and verified · 🟡 code exists, not yet run/verified in the real environment · ⬜ not started
+> Updated: 2026-10-26. ✅ done and verified · 🟡 code exists, not yet run/verified in the real environment · ⬜ not started
 
 ## Overview
 
@@ -19,6 +19,7 @@ Status of each phase of the prototype plan ([PLAN.md](../PLAN.md)) plus the work
 | Added: UI redesign + Data Team review | Friendlier UI; approval by the Data Team only | ✅ Tested locally in a browser |
 | Added: Knowledge from the platform repos | No sample data; the agent reads the two repos | ✅ 5/5 scenarios against the real repos |
 | Added: Web search port + code layout | Python port of web-search-mcp (module + MCP server); `agent/` in functional folders | ✅ Tested live (search, pages, research, MCP over stdio) |
+| Added: CI/CD | Checks on every push; approved deploy to VM 1 | 🟡 CI written (runs on GitHub); deploy waits for VM 1 |
 
 ---
 
@@ -138,6 +139,13 @@ To make the source known: add a source template, connection or job for it in dat
 - **The reviewer key is a soft gate**, not authentication; the app has no logins. Real auth (SSO in front of the app, or a Teams bot for approvals) is post-prototype.
 - **Chat doesn't auto-scroll** when the Data Team's decision arrives while the Request tab is in the background. Scroll down once.
 - ✅ *Fixed 2026-10-20 by web research.* **Source without a playbook: "ok" did not trigger any investigation** (reported 2026-10-12, seen with GSC). Replying `ok` only recorded the risk and moved on, while the message read as if the agent would investigate. Reworded, and the `investigate_source` step was added. (Playbooks were replaced by the ingestion repo on 2026-10-23; a source is known once that repo can onboard it.)
+
+## Added: CI/CD 🟡 (2026-10-26)
+Same two stages as data-onboarding-ingestion ([its ADR-0012](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0012-cicd-ssh-deploy.md)); setup in [infrastructure/prod/README.md](../infrastructure/prod/README.md).
+- 🟡 [ci.yml](../.github/workflows/ci.yml) on every pull request and push to `main`: ruff (runtime errors only), compile, `import app`, Compose files valid, image builds. Checked locally: ruff and `import app` pass
+- 🟡 [deploy.yml](../.github/workflows/deploy.yml) after CI on `main`: waits for approval (environment `production`), then over SSH on VM 1 `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune old images and build cache. Off until the variable `PROD_DEPLOY_ENABLED` is `true`
+- 🟡 [infrastructure/prod/](../infrastructure/prod/): compose for VM 1 (postgres + app, required passwords, creates `data-platform`), `.env.example`, `deploy.sh`
+- ⬜ When VM 1 exists: GitHub secrets, variables and environment from the prod README, then the first deploy (this repo before data-onboarding-ingestion)
 
 ## Next steps
 

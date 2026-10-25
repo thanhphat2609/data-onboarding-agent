@@ -1,0 +1,56 @@
+# Stage 2 of CI/CD: after CI passes on a push to main, deploy VM 1 over SSH once a reviewer approves
+# (environment `production`): git checkout <sha>, docker compose build --pull, up -d, prune old images and cache.
+# Disabled until the repository variable PROD_DEPLOY_ENABLED is "true" (VM 1 doesn't exist yet).
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit to deploy (default latest main)
+        required: false
+      no_cache:
+        description: Rebuild the image without the Docker layer cache
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >-
+      vars.PROD_DEPLOY_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-24.04
+    environment: production
+    env:
+      SSH_USER: ${{ secrets.PROD_SSH_USER }}
+      SSH_PORT: ${{ vars.PROD_SSH_PORT || '22' }}
+      REPO_DIR: ${{ vars.PROD_REPO_DIR || '/opt/data-onboarding-agent' }}
+      HOST: ${{ secrets.PROD_VM1_HOST }}
+      SHA: ${{ inputs.sha || github.event.workflow_run.head_sha || github.sha }}
+      NO_CACHE: ${{ inputs.no_cache && '--no-cache' || '' }}
+    steps:
+      - name: SSH key
+        env:
+          SSH_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+      - name: Deploy VM 1
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" \
+            "set -e; cd '$REPO_DIR'; git fetch --prune origin; sha=\$(git rev-parse '$SHA'); git show \"\$sha:infrastructure/prod/deploy.sh\" | bash -s -- \"\$sha\" $NO_CACHE"

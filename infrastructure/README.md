@@ -10,11 +10,11 @@ infrastructure/
 │   ├── docker-compose.yml  #   app (builds the image, port, settings, outputs/) + postgres
 │   ├── .env.example        #   settings template; copy to non-prod/.env (gitignored)
 │   └── codespace-network.sh #  Codespaces firewall fix, run on every start by .devcontainer/devcontainer.json
-├── prod/                   # VM 1 (Agent + Airflow + Flink JobManager): written once the VM exists
+├── prod/                   # VM 1 (Agent + Airflow + Flink JobManager): compose, .env.example, deploy.sh; draft until the VM exists (prod/README.md)
 └── README.md               # this file
 ```
 
-Prod will differ from non-prod in what it enforces: required passwords and `ACCOUNTS` (`${…:?}`), a pinned image tag instead of `build:`, and backups of the `pgdata` volume.
+Prod differs from non-prod in what it enforces: required passwords, `ACCOUNTS` and `PLATFORM_GITHUB_TOKEN` (`${…:?}`), and backups of the `pgdata` volume. The image is built on the VM by the Deploy workflow after a reviewer approves; CI checks every push to `main` first ([prod/README.md](prod/README.md)).
 
 ```
  Browser                Docker host (laptop / VM / codespace)                Google Colab (GPU), optional
