@@ -31,7 +31,7 @@ Detailed plan: see `PLAN.md` (prototype plan).
 | Added: SearXNG + Trafilatura for web research | 🟡 Checked offline; real searches in a codespace pending |
 | Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1 |
 | Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches in a codespace pending |
-| Next: 3 User Stories per request (spike, ingestion, transformation) | ⬜ Planned, see [docs/PHASES.md](docs/PHASES.md#next-phase-3-user-stories-per-request) |
+| Next: 3 User Stories per request (spike, ingestion 1:1 append, transformation: staging reload window → int → mart) | ⬜ Planned, see [docs/PHASES.md](docs/PHASES.md#next-phase-3-user-stories-per-request) |
 
 ---
 
