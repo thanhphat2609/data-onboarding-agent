@@ -1,4 +1,4 @@
-"""Messages from the requester while their request waits for the Data Team.
+"""Messages from the requester while their request waits for the Data Team (and questions while they check the draft).
 
 The graph is paused at `approval`, so these messages don't go through it right away:
 - a question ("any idea about Google Search Console data?") is answered from the two platform repos:
@@ -87,12 +87,14 @@ def _platform_table(kb: repos.Knowledge) -> list[str]:
     return rows if len(rows) > 2 else ["The platform has no onboarded systems yet."]
 
 
-def answer_question(text: str, values: dict, kb: repos.Knowledge) -> FollowUp:
+def answer_question(text: str, values: dict, kb: repos.Knowledge, draft: bool = False) -> FollowUp:
+    """draft=True: the requester is still checking the draft (nothing was sent to the Data Team yet)."""
     request = values.get("request") or {}
     rid, current = values.get("request_id", ""), ", ".join(request.get("sources", [])) or "none"
+    where = "is still a draft (not sent to the Data Team yet)" if draft else "is still with the Data Team"
     footer = [
         "",
-        f"Your request **{rid}** (sources: {current}) is still with the Data Team, unchanged.",
+        f"Your request **{rid}** (sources: {current}) {where}, unchanged.",
     ]
     if kb.errors:
         return FollowUp("\n".join([

@@ -23,7 +23,6 @@ sequenceDiagram
             R->>A: Answers
         end
     end
-    A->>T: "New data request" card
     A->>A: Check the ingestion + transformation repos per source
     opt Gap found (source the platform can't onboard)
         A->>R: Explains the gap, offers an alternative
@@ -32,12 +31,17 @@ sequenceDiagram
     opt Source the platform can't onboard yet
         A->>A: Reads the source's public docs (unverified)
     end
+    loop until the requester approves the draft
+        A->>R: The draft: User Story + acceptance criteria (technical details folded)
+        R->>A: ✓ Approve draft, or a change (a new draft follows)
+    end
+    A->>T: "New data request" card
     A->>R: "Your request is with the Data Team for review"
     A->>D: Request appears in the review queue
     alt Request changes
         D->>A: Comment, e.g. "change eta to 2026-12-15"
         A->>A: Updates the request, re-checks feasibility
-        A->>R: "The Data Team updated your request…"
+        A->>R: "The Data Team updated your request…" + the new draft to approve
     else Approve
         D->>A: Approve
         A->>A: Drafts the User Story
@@ -72,7 +76,7 @@ The agent needs **7 details**:
 
 After each message the agent extracts what it can (rules first; an LLM if configured), validates it, and asks for **at most 3 missing details per turn**. The answers can be numbered (`1. …`, one per line) or labelled (`eta: 2026-11-30`). The go-live date can also be relative: "in 2 weeks", "end of next month", "2 tuần nữa"; for a range such as "in 2 or 3 weeks" the agent takes the earlier date. The agent confirms the date it computed. Invalid values, such as an ETA in the past, are asked again with a ⚠️ note. If nothing in an answer matches the questions, the agent says so and asks again. The **Your request** card on the right fills in as details arrive.
 
-When all 7 are known, the agent posts a **"New data request"** card to Teams. This happens once per request, and writes `request.json`.
+When all 7 are known, the agent checks feasibility (step 3), then shows the requester a draft (step 4). The **"New data request"** Teams card is only posted once the requester approves that draft.
 
 ### 3. Feasibility: `catalog_check` + `feasibility`
 
@@ -108,7 +112,17 @@ If the requester accepted such a source, the agent looks up public documentation
 
 All of this is marked **unverified** and never changes the feasibility result. Only the source name and fixed keywords are sent to the search engine, never the request text. Turn it off with `WEB_RESEARCH=0`.
 
-### 4. Review: the Data Team decides (`approval`)
+### 4. Draft: the requester checks it (`requester_review`)
+
+The requester sees the **draft** on the right: the User Story sentence, the acceptance criteria and the description first, and the technical part (sources and feasibility, proposed pipeline, web research, risks) folded under *Technical details*. It is built from the same template as the final User Story, without the LLM, so it appears at once; the step tracker shows **Draft**.
+
+- **✓ Approve draft** (or typing `ok`): the request goes to the Data Team, and the **"New data request"** card is posted to Teams (once per request; writes `request.json`).
+- **A change**, e.g. `eta: 2026-12-01` or `grain: date x page`: applied at once (nothing was sent yet), feasibility is re-checked and a new draft is shown.
+- **A question**, e.g. *"what does the platform have for crm?"*: answered from the two repos; the draft stays as it is.
+
+Nothing reaches the Data Team until the requester approves.
+
+### 5. Review: the Data Team decides (`approval`)
 
 The requester now sees **"Waiting for Data Team review"** with the feasibility result (read-only). Their page checks every 5 seconds for a decision. They can close it and come back later from **Sessions**.
 
@@ -119,14 +133,14 @@ In the **🛡 Data Team review** tab, the queue lists every request waiting for 
 
 The reviewer then either:
 
-- **Approves.** The agent drafts the User Story (step 5).
-- **Requests changes** with a comment, for example `change eta to 2026-12-15` or `source: crm`. The comment is applied to the request like a requester's edit: fields are re-extracted, feasibility is re-checked, and the request comes back to the review queue. If something becomes missing or a new gap appears, the requester is asked first. The requester sees *"The Data Team updated your request: …"*.
+- **Approves.** The agent writes the final User Story (step 6).
+- **Requests changes** with a comment, for example `change eta to 2026-12-15` or `source: crm`. The comment is applied to the request like a requester's edit: fields are re-extracted, feasibility is re-checked, and the requester gets the **new draft** to approve (step 4) before it comes back to the review queue. If something becomes missing or a new gap appears, the requester is asked first. The requester sees *"The Data Team updated your request: …"*.
 
-The requester can also change their own request while it waits, by typing in the chat. That re-runs the same path.
+The requester can also change their own request while it waits, by typing in the chat (they confirm the change first). That re-runs the same path, including a new draft to approve.
 
 Only Data Team accounts (`DATA_TEAM`) see the review tab. Requesters sign in with their own account and only see their own requests in **Sessions**.
 
-### 5. User Story: `draft_us` + `summary`
+### 6. User Story: `draft_us` + `summary`
 
 The agent fills a fixed template: title, user story, description, sources and feasibility, proposed pipeline per source, acceptance criteria, risks, information sources, and (for unknown sources) web research plus questions for the Data Team. With an LLM, the title and description read better. Everything else is deterministic and cites the file in the ingestion or transformation repo it came from.
 
@@ -136,12 +150,12 @@ Then it writes `summary.md` and posts **"Request approved — User Story ready"*
 
 ```
 outputs/REQ-20261023-d92104/
-├── request.json              # after intake (step 2)
+├── request.json              # when the requester approves the draft (step 4)
 ├── teams_messages.jsonl      # only if Teams is mocked or the webhook failed
 ├── source_notes_<src>.yaml   # only for sources the platform can't onboard yet (step 3b)
-├── feasibility.json          # after approval (step 5)
-├── user_story.md             # step 5
-└── summary.md                # step 5
+├── feasibility.json          # after the Data Team approves (step 6)
+├── user_story.md             # step 6
+└── summary.md                # step 6
 ```
 
 ## With or without an LLM
@@ -159,7 +173,7 @@ The header pill shows which mode is active. Switch it in **⚙️ Settings → L
 ## Try it
 
 1. Start the app: `python app.py`, or `docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`.
-2. In **💬 Request**, click the "Current CRM customers" example and answer the questions.
+2. In **💬 Request**, click the "Current CRM customers" example and answer the questions. Check the draft on the right: type `eta: 2026-12-01` to see a new draft, then click **✓ Approve draft**.
 3. Open **🛡 Data Team review**, pick the request, and click **Request changes** with `change eta to 2026-12-15`. Then go back to **💬 Request** and watch it update.
 4. Approve it in the review tab, then download the User Story in **💬 Request**.
 5. Try the "CRM segments" and "HR on SQL Server" examples to see a new ingestion job and a new connection.

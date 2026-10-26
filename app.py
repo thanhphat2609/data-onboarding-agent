@@ -106,11 +106,13 @@ def _header_html() -> str:
 
 
 # Step tracker. "complete" = every step done.
-STEPS = [("describe", "Describe"), ("details", "Details"), ("feasibility", "Feasibility"), ("review", "Review"), ("story", "User Story")]
+STEPS = [("describe", "Describe"), ("details", "Details"), ("feasibility", "Feasibility"), ("draft", "Draft"), ("review", "Review"),
+         ("story", "User Story")]
 # Which step a running node belongs to, so the tracker moves while the agent works.
 NODE_STEP = {
     "intake": "details",
-    "notify": "details",
+    "requester_review": "draft",
+    "notify": "review",
     "catalog_check": "feasibility",
     "feasibility": "feasibility",
     "investigate_source": "feasibility",
@@ -122,6 +124,8 @@ NODE_STEP = {
 def _stage(ev: dict, values: dict) -> str:
     if ev["type"] == "done":
         return "complete"
+    if ev["type"] == "draft":
+        return "draft"
     if ev["type"] == "approval":
         return "review"
     if ev["type"] == "question":
@@ -253,7 +257,7 @@ def _approval_html(ev: dict, title: str, note: str = "") -> str:
 WELCOME = """## 👋 What data do you need?
 Describe it in your own words, in English or Vietnamese. The agent asks for anything missing
 (source, date range, go-live date, refresh, grain, who uses it), checks feasibility,
-and drafts a User Story for the Data Team to approve.
+and drafts a User Story: you check the draft, then the Data Team approves it.
 
 Not sure how to start? Try one of these:"""
 
@@ -276,6 +280,7 @@ PLACEHOLDERS = {
     "describe": "Describe the data you need…   (Shift+Enter for a new line)",
     "details": "Answer here, one item per line, e.g. 1. from 2024-01-01 to now   (Shift+Enter for a new line)",
     "feasibility": "Reply ok to accept, or suggest an alternative…",
+    "draft": "Check the draft: click ✓ Approve draft, or type what should change, e.g. eta: 2026-12-01…",
     "review": "Waiting for the Data Team. Ask a question, or type a change (you confirm it before it's applied)…",
     "complete": "Describe another data request to start a new one…",
 }
@@ -283,7 +288,8 @@ PLACEHOLDERS = {
 # What the "thinking" bubble says while each node runs.
 NODE_STATUS = {
     "intake": "Reading your message…",
-    "notify": "Notifying the Data Team…",
+    "requester_review": "Preparing the draft…",
+    "notify": "Sending your request to the Data Team…",
     "catalog_check": "Searching the dbt models…",
     "feasibility": "Checking feasibility…",
     "investigate_source": "Researching the web docs of sources the platform can't onboard yet (a few rounds, up to ~3 min)…",
@@ -308,11 +314,18 @@ def _reply(ev: dict, values: dict) -> list[dict]:
     """The assistant's chat message for an agent event."""
     if ev["type"] == "question":
         text = ev["question"]
+    elif ev["type"] == "draft":
+        text = (
+            "I have everything I need and the feasibility check is done. **Here is the draft** (on the right): "
+            "check the User Story and the acceptance criteria.\n\n"
+            "- Click **✓ Approve draft** to send it to the Data Team.\n"
+            "- Or type what should change (e.g. `eta: 2026-12-01`, `grain: date x page`); you get a new draft.\n\n"
+            "Nothing is sent to the Data Team until you approve."
+        )
     elif ev["type"] == "approval":
         text = (
-            "Thanks, I have everything I need and the feasibility check is done. Your request is now with the "
-            "**Data Team** for review. This page updates when they approve it or ask for changes; "
-            "you can also come back later from **Sessions**."
+            "Thanks! Your request is now with the **Data Team** for review. This page updates when they approve it "
+            "or ask for changes; you can also come back later from **Sessions**."
         )
     elif ev["type"] == "done":
         title = (values.get("outputs") or {}).get("title") or values.get("request_id", "")
@@ -337,9 +350,9 @@ def _result(values: dict) -> tuple:
 
 
 # Outputs of every chat handler, in this order:
-# thread_state, chat, box, stepper, request_card, waiting_box, waiting_html,
+# thread_state, chat, box, stepper, request_card, waiting_box, waiting_html, draft_box, draft_main, draft_technical,
 # result_box, result_title, result_preview, us_download, summary_download, state_json, mark, poll_timer
-N_OUT = 15
+N_OUT = 18
 SKIP = tuple(gr.update() for _ in range(N_OUT))
 
 
@@ -353,7 +366,7 @@ def _view(thread_id: str, history: list, ev: dict | None = None) -> tuple:
     values = runner.state(thread_id) if thread_id else {}
     ev = ev or (runner.current_event(thread_id) if thread_id else {"type": "empty"})
     stage = _stage(ev, values)
-    review, done = stage == "review", stage == "complete"
+    review, draft, done = stage == "review", stage == "draft", stage == "complete"
     result = _result(values) if done else ("", "", gr.update(value=None, visible=False), gr.update(value=None, visible=False))
     snapshot = {k: values.get(k) for k in ("request_id", "request", "missing_fields", "gap", "existing_models", "outputs") if values.get(k)}
     waiting = _approval_html(
@@ -367,6 +380,9 @@ def _view(thread_id: str, history: list, ev: dict | None = None) -> tuple:
         _request_html(values),
         gr.update(visible=review),
         waiting,
+        gr.update(visible=draft),
+        ev["draft"]["main"] if draft else "",
+        ev["draft"]["technical"] if draft else "",
         gr.update(visible=done),
         *result,
         json.dumps(snapshot, ensure_ascii=False, indent=2),
@@ -376,9 +392,9 @@ def _view(thread_id: str, history: list, ev: dict | None = None) -> tuple:
 
 
 def _busy(thread_id: str, history: list, stepper=None) -> tuple:
-    """While the agent runs: show the thinking bubble, clear the input, hide the waiting panel."""
-    keep = gr.update()
-    return (thread_id, history, gr.update(value=""), stepper or keep, keep, gr.update(visible=False), *[keep] * 9)
+    """While the agent runs: show the thinking bubble, clear the input, hide the waiting and draft panels."""
+    keep, hide = gr.update(), gr.update(visible=False)
+    return (thread_id, history, gr.update(value=""), stepper or keep, keep, hide, keep, hide, keep, keep, *[keep] * 8)
 
 
 def _run(thread_id: str, graph_input, history: list):
@@ -405,6 +421,9 @@ def on_send(message: str, thread_id: str, history: list, on_behalf: str, request
     ev = runner.current_event(thread_id) if thread_id else {"type": "empty"}
     if ev["type"] == "question":
         graph_input = Command(resume=message)
+    elif ev["type"] == "draft":  # checking the draft: a question is answered, anything else is a change (or "ok")
+        yield from _draft_message(message, thread_id, history)
+        return
     elif ev["type"] == "approval":  # waiting for the Data Team: answer questions, confirm changes first
         yield from _followup(message, thread_id, history)
         return
@@ -434,6 +453,36 @@ def _followup(message: str, thread_id: str, history: list):
     yield _view(thread_id, history + [{"role": "assistant", "content": reply}])
 
 
+def _draft_message(message: str, thread_id: str, history: list):
+    """A message while the requester checks the draft. Nothing has been sent yet, so a change is applied at once
+    (a new draft follows); a question is answered from the platform repos; "ok"/"approve" approves the draft."""
+    pending = _PENDING.pop(thread_id, None)
+    if pending and followup.confirms(message, pending):
+        yield from _run(thread_id, Command(resume={"action": "edit", "comment": pending["comment"]}), history)
+        return
+    if followup.is_no(message):
+        yield _view(thread_id, history + [{"role": "assistant", "content": "OK, the draft is unchanged. Approve it, or type what should change."}])
+        return
+    values = runner.state(thread_id)
+    if followup.is_question(message) and not followup.preview_change(message, values):
+        result = followup.answer_question(message, values, repos.get(), draft=True)
+        if result.pending:
+            _PENDING[thread_id] = result.pending
+        yield _view(thread_id, history + [{"role": "assistant", "content": result.reply}])
+        return
+    yield from _run(thread_id, Command(resume=message), history)
+
+
+def on_approve_draft(thread_id: str, history: list, request: gr.Request):
+    """✓ Approve draft: the request goes to the Data Team."""
+    if not thread_id or runner.current_event(thread_id)["type"] != "draft" or not _owns(thread_id, request):
+        yield SKIP
+        return
+    _PENDING.pop(thread_id, None)
+    history = history + [{"role": "user", "content": "✓ Approve draft"}]
+    yield from _run(thread_id, Command(resume={"action": "approve"}), history)
+
+
 def on_example(evt: gr.SelectData, thread_id: str, history: list, on_behalf: str, request: gr.Request):
     text = evt.value.get("text", "") if isinstance(evt.value, dict) else str(evt.value)
     yield from on_send(text, thread_id, history, on_behalf, request)
@@ -452,7 +501,7 @@ def on_poll(thread_id: str, history: list, mark: str):
         note = "✅ The **Data Team approved** your request."
     else:
         comment = values.get("review_comment") or ""
-        note = f"✏️ The **Data Team updated** your request: “{comment}”. The feasibility check was re-run."
+        note = f"✏️ The **Data Team updated** your request: “{comment}”. The feasibility check was re-run; please check the new draft."
     return _view(thread_id, history + [{"role": "assistant", "content": note}] + _reply(ev, values), ev)
 
 
@@ -514,7 +563,8 @@ def on_review_decision(action: str):
 
 # ---------- sessions ----------
 
-SESSION_STATUS = {"question": "waiting for the requester's answer", "approval": "waiting for Data Team review", "done": "done", "empty": "started"}
+SESSION_STATUS = {"question": "waiting for the requester's answer", "draft": "waiting for the requester to approve the draft",
+                  "approval": "waiting for Data Team review", "done": "done", "empty": "started"}
 
 
 def _session_choices(user: str) -> list[tuple[str, str]]:
@@ -708,9 +758,10 @@ CSS += """
 .meta.note { margin: -4px 0 8px; }
 .callout { margin-bottom: 4px; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: rgba(22,163,74,.10); }
 
-.review-box, .result-box { border: 1.5px solid #6366f1 !important; border-radius: 12px !important; overflow: hidden;
+.review-box, .result-box, .draft-box { border: 1.5px solid #6366f1 !important; border-radius: 12px !important; overflow: hidden;
   box-shadow: 0 6px 20px rgba(79,70,229,.10); margin-bottom: 12px; }
 .result-title { padding: 12px 16px 4px !important; }
+.draft-box > .prose:first-child { padding: 12px 16px 0 !important; }
 .result-title h3 { margin: 0 0 6px; font-size: 16px; }
 .us-preview { max-height: 50vh; overflow: auto; }
 
@@ -756,6 +807,13 @@ def build_ui() -> gr.Blocks:
                         # Read-only for the requester: the Data Team decides in the review tab.
                         with gr.Group(visible=False, elem_classes="review-box") as waiting_box:
                             waiting_html = gr.HTML()
+                        # The requester checks the draft here before it goes to the Data Team.
+                        with gr.Group(visible=False, elem_classes="draft-box") as draft_box:
+                            gr.Markdown("**Draft** — not sent to the Data Team yet. Approve it, or type a change in the chat.")
+                            approve_draft_btn = gr.Button("✓ Approve draft", variant="primary")
+                            draft_main = gr.Markdown(elem_classes="us-preview")
+                            with gr.Accordion("Technical details (sources, pipeline, web research)", open=False):
+                                draft_technical = gr.Markdown(elem_classes="us-preview")
                         with gr.Group(visible=False, elem_classes="result-box") as result_box:
                             result_title = gr.Markdown(elem_classes="result-title")
                             with gr.Row():
@@ -839,13 +897,14 @@ def build_ui() -> gr.Blocks:
         mark = gr.State("")
         poll_timer = gr.Timer(5, active=False)
 
-        outputs =[thread_state, chat, box, stepper, request_card, waiting_box, waiting_html,
+        outputs = [thread_state, chat, box, stepper, request_card, waiting_box, waiting_html, draft_box, draft_main, draft_technical,
                    result_box, result_title, result_preview, us_dl, sum_dl, state_json, mark, poll_timer]
         assert len(outputs) == N_OUT
         # The chat shows its own "thinking" bubble, so hide Gradio's progress overlay.
         busy = {"show_progress": "hidden"}
         box.submit(on_send, [box, thread_state, chat, on_behalf], outputs, **busy)
         chat.example_select(on_example, [thread_state, chat, on_behalf], outputs, **busy)
+        approve_draft_btn.click(on_approve_draft, [thread_state, chat], outputs, **busy)
         poll_timer.tick(on_poll, [thread_state, chat, mark], outputs, **busy)
         new_btn.click(lambda: _view("", []), None, outputs)
         thread_state.change(lambda t: t, thread_state, thread_label)

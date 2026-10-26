@@ -7,8 +7,8 @@ Usage:
 The agent's knowledge comes from the ingestion and transformation repos (agent/repos): set
 INGESTION_PATH / TRANSFORMATION_PATH to local checkouts, or GITHUB_TOKEN to read them from GitHub.
 
-Request file: name, today (simulated date), initial_message, answers (replies in order), approval (Data Team
-decisions, e.g. {action: approve}), expected (max_turns, gap_types, data_already_available,
+Request file: name, today (simulated date), initial_message, answers (replies in order), draft (the requester's
+answers to the draft, default approve), approval (Data Team decisions, e.g. {action: approve}), expected (max_turns, gap_types, data_already_available,
 recommendation {source: name}, final_date_start, final_eta) and optionally team_handling (same keys + notes).
 
 Samples with a `team_handling` block (how the Data Team actually handled the request) are also
@@ -34,6 +34,8 @@ def run_sample(sample: dict, runner: AgentRunner | None = None) -> dict:
     runner = runner or AgentRunner(checkpointer=InMemorySaver())
     answers = list(sample.get("answers") or [])
     decisions = list(sample.get("approval") or [{"action": "approve"}])
+    # The requester's answers to the draft, e.g. a change then {action: approve}; by default they approve it.
+    drafts = list(sample.get("draft") or [{"action": "approve"}] * 5)
     gap_types: list[str] = []
 
     thread_id, event = runner.start(sample["initial_message"], today=sample.get("today"))
@@ -45,6 +47,10 @@ def run_sample(sample: dict, runner: AgentRunner | None = None) -> dict:
             if not answers:
                 break
             event = runner.reply(thread_id, answers.pop(0))
+        elif event["type"] == "draft":
+            if not drafts:
+                break
+            event = runner.reply(thread_id, drafts.pop(0))
         elif event["type"] == "approval":
             if not decisions:
                 break

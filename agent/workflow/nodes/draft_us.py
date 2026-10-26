@@ -168,15 +168,42 @@ def render_user_story(state: dict, title: str, description: str, extra_ac: list[
     return "\n".join(lines) + "\n"
 
 
-def draft_us(state: dict) -> dict:
-    request = state["request"]
+def default_title(request: dict) -> str:
     desc = request["dataset_description"]
     short = desc if len(desc) <= 80 else desc[:80].rsplit(" ", 1)[0] + "…"
-    title = f"[Data Request] {short}"
-    description = (
-        f"Requested by {request['consumers']}: \"{desc}\". Sources: {', '.join(request['sources'])}. "
-        f"Collected through the Data Onboarding Agent and approved."
+    return f"[Data Request] {short}"
+
+
+def default_description(request: dict, approved: bool) -> str:
+    return (
+        f"Requested by {request['consumers']}: \"{request['dataset_description']}\". Sources: {', '.join(request['sources'])}. "
+        f"Collected through the Data Onboarding Agent" + (" and approved." if approved else ".")
     )
+
+
+# Sections the requester owns, shown first in the draft; the others are folded under "Technical details".
+REQUESTER_SECTIONS = ("User Story", "Acceptance Criteria", "Description")
+
+
+def draft_preview(state: dict) -> dict:
+    """The User Story as the requester checks it before it goes to the Data Team: same template as the final
+    one, no LLM (fast; the LLM wording is added after the Data Team approves). Split into the parts the
+    requester owns ("main") and the technical sections ("technical")."""
+    request = state["request"]
+    md = render_user_story(state, default_title(request), default_description(request, approved=False), [])
+    head, *sections = md.split("\n## ")
+    head = "\n".join(line for line in head.split("\n") if not line.startswith("**Teams thread:**"))  # no thread yet
+    main, technical = [head.rstrip()], []
+    for name in REQUESTER_SECTIONS:
+        main += [f"## {sec.rstrip()}" for sec in sections if sec.split("\n", 1)[0].strip() == name]
+    technical += [f"## {sec.rstrip()}" for sec in sections if sec.split("\n", 1)[0].strip() not in REQUESTER_SECTIONS]
+    return {"main": "\n\n".join(main) + "\n", "technical": "\n\n".join(technical) + "\n"}
+
+
+def draft_us(state: dict) -> dict:
+    request = state["request"]
+    title = default_title(request)
+    description = default_description(request, approved=True)
     extra_ac: list[str] = []
     llm = get_llm()
     if llm:

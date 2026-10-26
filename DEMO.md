@@ -24,11 +24,11 @@ About 20 minutes. Goal: show the 3 things the prototype must prove (see `PLAN.md
 | # | Show | Point to make |
 |---|---|---|
 | 1 | Example "Current CRM customers for a dashboard" | Asks only for missing fields, at most 3 per turn; recommends the existing dbt model `crm_customers_current`, so nothing new is ingested |
-| 2 | Teams channel | "New data request" card arrives right after intake |
+| 2 | The draft on the right, then **✓ Approve draft**; Teams channel | The requester checks the User Story before anyone else sees it (a typed change gives a new draft); the "New data request" card arrives only after they approve |
 | 3 | Example "CRM segments" | CRM is onboarded but `segments` has no ingestion job: proposes a job on `crm-sqlserver-nonprod`, then dbt models |
 | 4 | Example "HR employees on SQL Server" | Not onboarded, but SQL Server is a supported source type: proposes a new connection from the `sqlserver` template, a job and dbt models |
 | 4b | "ERP on PostgreSQL", reply `ok` | No PostgreSQL template yet: the agent reads public docs and lists questions for the Data Team; findings are marked unverified |
-| 5 | **🛡 Data Team review** tab (as the Data Team): open the request, **Request changes** with a comment, show the requester's page updating, then **Approve** | The Data Team approves before anything is drafted, not the requester; changes re-run feasibility |
+| 5 | **🛡 Data Team review** tab (as the Data Team): open the request, **Request changes** with a comment, show the requester's page updating, then **Approve** | The requester approves the draft, the Data Team approves the request; a Data Team change re-runs feasibility and goes back to the requester as a new draft |
 | 6 | `outputs/<request_id>/user_story.md` + summary card in Teams | Every step points to a file in one of the two repos. Ask the team: usable as is, with minor edits, or not? |
 
 ## Collect
