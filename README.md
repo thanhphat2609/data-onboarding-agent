@@ -31,6 +31,7 @@ Detailed plan: see `PLAN.md` (prototype plan).
 | Added: SearXNG + Trafilatura for web research | 🟡 Checked offline; real searches in a codespace pending |
 | Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1 |
 | Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches in a codespace pending |
+| Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |
 | Next: 3 User Stories per request (spike, ingestion 1:1 append, transformation: staging reload window → int → mart) | ⬜ Planned, see [docs/PHASES.md](docs/PHASES.md#next-phase-3-user-stories-per-request) |
 
 ---
@@ -75,7 +76,7 @@ data-onboarding-agent/
 │   │   └── lookup.py          #   lookup_source, search_models
 │   ├── research/              # sources the platform can't onboard yet
 │   │   ├── investigate.py     #   web research in rounds: top 5 links, key passages, questions, draft notes
-│   │   └── websearch/         #   Python port of web-search-mcp: SearXNG + key-less engines, page text, MCP server
+│   │   └── websearch/         #   web_search + web_fetch (port of web-search-mcp): SearXNG → Brave → DuckDuckGo, page text, MCP server
 │   ├── llm/                   # optional Ollama client (client.py) + prompts/
 │   └── integrations/teams.py  # Teams webhook (or mock); `python -m agent.integrations.teams <url>` sends a test card
 ├── docs/                      # architecture, how it works, phase status
