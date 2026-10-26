@@ -22,10 +22,17 @@ Prod differs from non-prod in what it enforces: required passwords, `ACCOUNTS` a
 ┌───────────────┐      ┌───────────────────────────────────────────┐ HTTPS   ┌──────────────────────────┐
 │ 127.0.0.1:7860│─────▶│ container "app": python app.py (Gradio)   │ + key   │ cloudflared tunnel       │
 │ (or Codespaces│      │   └─ outputs/   ◀── bind mount             ├────────▶│  └─ ollama_auth_proxy.py │
-│  PORTS tab)   │      └──────────────────┬────────────────────────┘         │      └─ Ollama (qwen2.5) │
-└───────────────┘                         │ GITHUB_TOKEN                     └──────────────────────────┘
-                                          ▼
-                     github.com: data-onboarding-ingestion, data-onboarding-transformation
+│  PORTS tab)   │      └──┬───────────────┬───────────────┬────────┘         │      └─ Ollama (qwen2.5) │
+└───────────────┘         │ sessions      │ web research  │ GITHUB_TOKEN     └──────────────────────────┘
+                          ▼               ▼               ▼
+         ┌──────────────────────┐ ┌──────────────────┐  github.com: data-onboarding-ingestion,
+         │ container "postgres" │ │ container        │              data-onboarding-transformation
+         │ onboarding_agent,    │ │ "searxng"        │──▶ search engines on the internet
+         │ airflow, platform    │ │ (no host port)   │
+         └──────────┬───────────┘ └──────────────────┘
+                    │ network data-platform
+                    ▼
+         data-onboarding-ingestion's Airflow (same host only, its ADR-0011)
 ```
 
 ## Open the UI

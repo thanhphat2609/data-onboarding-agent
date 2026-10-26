@@ -3,7 +3,7 @@
 The agent and the platform's shared PostgreSQL server on VM 1, next to data-onboarding-ingestion's Airflow and Flink JobManager. **Draft until VM 1 exists.** Same CI/CD flow as data-onboarding-ingestion ([its ADR-0012](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0012-cicd-ssh-deploy.md)).
 
 ```
-docker-compose.yml   postgres (databases onboarding_agent, airflow, platform) + app; creates the data-platform network
+docker-compose.yml   postgres (databases onboarding_agent, airflow, platform) + searxng + app; creates the data-platform network
 .env.example         settings; copy to .env on the VM
 deploy.sh            run on VM 1 by the Deploy workflow: checkout <sha>, build, up, prune
 ```
@@ -57,4 +57,4 @@ cd /opt/data-onboarding-agent && sudo -u deploy cp infrastructure/prod/.env.exam
 sudo -u deploy docker compose -f infrastructure/prod/docker-compose.yml up -d --build
 ```
 
-For a private repository, clone with a read-only **deploy key** (repository Settings → Deploy keys) instead of HTTPS. Application secrets (`ACCOUNTS`, database passwords, `PLATFORM_GITHUB_TOKEN`) stay in `.env` on the VM, never in GitHub.
+For a private repository, clone with a read-only **deploy key** (repository Settings → Deploy keys) instead of HTTPS. Application secrets (`ACCOUNTS`, database passwords, `PLATFORM_GITHUB_TOKEN`, and `SEARXNG_SECRET`, any random string such as the output of `openssl rand -hex 32`) stay in `.env` on the VM, never in GitHub.

@@ -16,7 +16,7 @@ Detailed plan: see `PLAN.md` (prototype plan).
 
 ## Status
 
-> Updated: 2026-10-23. Details per item: [docs/PHASES.md](docs/PHASES.md).
+> Updated: 2026-10-26. Details per item: [docs/PHASES.md](docs/PHASES.md).
 
 | Phase | Status |
 |---|---|
@@ -26,7 +26,10 @@ Detailed plan: see `PLAN.md` (prototype plan).
 | 3 – Feasibility | ✅ |
 | 4 – Approval + Output | ✅ Approval by the Data Team in the review tab |
 | 5 – Teams + Demo | 🟡 Mock works; real webhook, real requests and demo pending |
-| Added: web research, Docker/Codespaces, UI redesign, repo knowledge | ✅ / 🟡 Docker not yet built for real |
+| Added: web research, UI redesign, repo knowledge | ✅ |
+| Added: Docker/Codespaces, PostgreSQL sessions, login with roles | 🟡 Runs in Codespaces (v0.7.0); a full request + approval in Docker still to check |
+| Added: SearXNG + Trafilatura for web research | 🟡 Checked offline; real searches in a codespace pending |
+| Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1 |
 
 ---
 
@@ -110,11 +113,13 @@ docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
 ```
 Then open http://127.0.0.1:7860. In GitHub Codespaces (Docker is preinstalled), open the forwarded port 7860 from the **PORTS** tab instead.
 
+Three containers start: `app` (web UI and agent), `postgres` (sessions, plus the `airflow` and `platform` databases that data-onboarding-ingestion uses on the same host) and `searxng` (web search). Prod on VM 1 runs the same three from `infrastructure/prod/`; CI runs on every push and the Deploy workflow is run by hand ([infrastructure/prod/README.md](infrastructure/prod/README.md)).
+
 For settings (`.env` / Codespaces secrets), where data is stored, port visibility and troubleshooting, see [infrastructure/README.md](infrastructure/README.md).
 
 ## Web search and the MCP server
 
-Web research uses [agent/research/websearch/](agent/research/websearch/), a Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): search without API keys (Bing, Brave, DuckDuckGo), then read pages over HTTP or in a headless browser when they need JavaScript.
+Web research uses [agent/research/websearch/](agent/research/websearch/), a Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT). Search goes to the self-hosted **SearXNG** container first (Docker setups, `SEARXNG_URL`), then to the key-less scrapers (Bing, Brave, DuckDuckGo); no API keys. Pages are read over HTTP with **Trafilatura** for the main text, or in a headless browser when they need JavaScript.
 
 - **Headless browser (optional):** `python -m playwright install chromium` once (the Playwright package is in `requirements.txt`). Without it, search falls back to DuckDuckGo over HTTP and JavaScript-only pages stay unreadable. Docker: `WITH_BROWSER=true`.
 - **MCP server** with the original's three tools (`full-web-search`, `get-web-search-summaries`, `get-single-web-page-content`), for LM Studio, Claude Desktop or other MCP clients:

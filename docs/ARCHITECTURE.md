@@ -20,7 +20,10 @@ flowchart LR
     RUN -- sessions table --> DB
     G -- files --> OUT[(outputs/&lt;request_id&gt;/)]
     G -. optional .-> LLM[Ollama LLM<br/>local or Colab tunnel]
-    G -. optional .-> WEB[Public docs on the web<br/>websearch: Bing / Brave / DuckDuckGo]
+    G -. optional .-> SX[SearXNG container<br/>self-hosted metasearch]
+    SX --> WEB[Public docs on the web]
+    G -. fallback .-> WEB2[Bing / Brave / DuckDuckGo<br/>key-less scrapers]
+    WEB2 --> WEB
     G -- webhook or mock file --> T[Teams channel]
 ```
 
@@ -38,11 +41,11 @@ flowchart LR
 | Repositories | [agent/repos/__init__.py](../agent/repos/__init__.py), [agent/repos/github.py](../agent/repos/github.py), [agent/repos/dbt_project.py](../agent/repos/dbt_project.py) | Read the two repos (local checkout or GitHub) into one cached `Knowledge`: source templates, connections, jobs, dbt models |
 | Knowledge | [agent/repos/lookup.py](../agent/repos/lookup.py) | `lookup_source(system)`, `search_models(query)` (token-overlap score) over the repos |
 | Web research | [agent/research/investigate.py](../agent/research/investigate.py) | For sources the platform can't onboard yet: find and read public docs, key passages, draft source notes, questions for the Data Team |
-| Web search | [agent/research/websearch/](../agent/research/websearch/) | Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): key-less search (Bing → Brave in an optional headless browser, then DuckDuckGo), page content over HTTP with a headless-browser fallback, and an MCP server (`python -m agent.research.websearch.mcp_server`) with the original's three tools |
+| Web search | [agent/research/websearch/](../agent/research/websearch/) | Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): search through the self-hosted SearXNG container first, then the key-less scrapers (Bing → Brave in an optional headless browser, then DuckDuckGo); page text with Trafilatura over HTTP, with a headless-browser fallback; and an MCP server (`python -m agent.research.websearch.mcp_server`) with the original's three tools |
 | LLM client | [agent/llm/client.py](../agent/llm/client.py), [agent/llm/prompts/](../agent/llm/prompts/) | Optional Ollama client (API key support for the Colab proxy); prompts as Markdown files |
 | Teams | [agent/integrations/teams.py](../agent/integrations/teams.py) | Adaptive Card to a Workflows webhook; without a URL (or on failure) writes `teams_messages.jsonl` |
 | Config | [agent/config.py](../agent/config.py) | Paths and env vars, including which repos and branches to read |
-| Infrastructure | [infrastructure/](../infrastructure/) | Dockerfile + compose for laptop, VM and Codespaces |
+| Infrastructure | [infrastructure/](../infrastructure/), [.github/workflows/](../.github/workflows/) | Dockerfile; compose for non-prod (laptop, Codespaces) and prod (VM 1) with three containers (see [Deployment](#deployment)); SearXNG settings; CI on every push and the Deploy workflow |
 
 ## The graph
 
@@ -158,6 +161,17 @@ While a request waits for review, the Request tab polls every 5 seconds (`gr.Tim
 | Docker (laptop / VM) | `docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build` | Same; host Ollama via `host.docker.internal` |
 | GitHub Codespaces | Same compose command (Docker is preinstalled) | Colab via tunnel |
 | Colab only | Notebook option B: app with `share=True` on Colab | Ollama on the Colab GPU |
+| Prod, VM 1 (draft until the VM exists) | `infrastructure/prod/docker-compose.yml`, deployed by the Deploy workflow, which someone runs by hand after CI is green ([infrastructure/prod/README.md](../infrastructure/prod/README.md)) | Ollama/vLLM on a GPU VM or an approved LLM API |
+
+The Docker setups run three containers:
+
+| Container | Image | Role | Port |
+|---|---|---|---|
+| `app` | built from [infrastructure/Dockerfile](../infrastructure/Dockerfile) | Gradio UI + agent | `127.0.0.1:7860` |
+| `postgres` | `postgres:16.15-alpine` | The platform's one PostgreSQL server: `onboarding_agent` (this app), `airflow` and `platform` (data-onboarding-ingestion, its ADR-0011). Creates the Docker network `data-platform` that ingestion's Airflow joins | `127.0.0.1:5432` |
+| `searxng` | `searxng/searxng` | Self-hosted metasearch, the first engine of web research ([Web search](#web-search)); keeps no data | none (app only, `http://searxng:8080`) |
+
+On VM 1 these run next to data-onboarding-ingestion's Web UI, API, Airflow and Flink JobManager. Deploy this stack first: it creates the network and the database server.
 
 The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks/ollama_auth_proxy.py) (API key, read/chat endpoints only) and a cloudflared tunnel. See the main [README](../README.md#deployment-model-on-colab-web-app-on-your-machine).
 
