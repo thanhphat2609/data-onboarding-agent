@@ -71,13 +71,27 @@ def gap_question(gaps: list[dict], unclear: bool) -> str:
     return "\n".join(lines)
 
 
-def _field_question(field: str) -> str:
+def new_sources(request: dict) -> list[str]:
+    """Sources the platform can't onboard yet: not an onboarded system, no source template for their type
+    (the same test as the gap in feasibility)."""
+    kb = repos.get()
+    out = []
+    for source in request.get("sources") or []:
+        system, stype = repos.parse_source(source, kb)
+        if system not in kb.systems() and not (stype and stype in kb.templates):
+            out.append(source)
+    return out
+
+
+def _field_question(field: str, request: dict) -> str:
     """The question for a field; the sources question lists the systems onboarded in the ingestion repo."""
     systems = ", ".join(repos.get().systems()) or "none yet"
-    return FIELD_QUESTIONS[field].replace("{systems}", systems)
+    names = " and ".join(f"**{s}**" for s in new_sources(request)) or "this source"
+    return FIELD_QUESTIONS[field].replace("{systems}", systems).replace("{new_sources}", names)
 
 
-def fields_question(fields: list[str], errors: dict, first: bool, unreadable: str = "", notes: list[str] = ()) -> str:
+def fields_question(fields: list[str], errors: dict, first: bool, unreadable: str = "", notes: list[str] = (),
+                    request: dict | None = None) -> str:
     """unreadable: the user's last answer when nothing in it matched the questions asked."""
     lines = list(notes)
     if unreadable:
@@ -88,7 +102,7 @@ def fields_question(fields: list[str], errors: dict, first: bool, unreadable: st
             lines.append(f"⚠️ {errors[field]}")
     lines.append("Hi! I need a few details to set up your request:" if first else "I need a bit more information:")
     for i, field in enumerate(fields, 1):
-        lines.append(f"{i}. {_field_question(field)}")
+        lines.append(f"{i}. {_field_question(field, request or {})}")
     if len(fields) > 1:
         lines.append("\n(Answer by number, e.g. `1. ...`, one item per line)")
     question = "\n".join(lines)
@@ -139,15 +153,20 @@ def intake(state: dict) -> dict:
 
     request, errors = validate(request, today)
     missing = missing_fields(request)
+    # Right after a new source is named: where it comes from (helps the Data Team and the web research).
+    if "sources" not in missing and not request.get("source_origin") and new_sources(request):
+        missing.insert(0, "source_origin")
     if "eta" in errors:  # the ⚠️ line explains it instead
         notes = [n for n in notes if "go-live" not in n]
 
     if gaps:
         asked, question = {"kind": "gap"}, gap_question(gaps, unclear)
     elif missing:
-        fields = missing[: config.MAX_FIELDS_PER_QUESTION]
+        # The origin is asked on its own, as the follow-up to "which dataset": a free-text answer then maps to it.
+        fields = ["source_origin"] if missing[0] == "source_origin" else missing[: config.MAX_FIELDS_PER_QUESTION]
         asked = {"kind": "fields", "fields": fields}
-        question = fields_question(fields, errors, first=(n == 0 and not request), unreadable=unreadable, notes=notes)
+        question = fields_question(fields, errors, first=(n == 0 and not request), unreadable=unreadable, notes=notes,
+                                   request=request)
     else:
         asked, question = {}, ""
 

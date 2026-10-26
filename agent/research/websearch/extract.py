@@ -102,7 +102,3 @@ def clean_text(text: str, max_chars: int = 500_000) -> str:
     lines = (re.sub(r"[ \t\r\f\v]+", " ", line).strip() for line in text.split("\n"))
     return "\n".join(line for line in lines if line)[:max_chars]
 
-
-def preview(text: str, max_chars: int = 500) -> str:
-    flat = re.sub(r"\s+", " ", text).strip()
-    return flat if len(flat) <= max_chars else flat[:max_chars] + "..."

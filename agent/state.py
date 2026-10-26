@@ -14,7 +14,11 @@ REQUIRED_FIELDS = [
 
 FIELD_QUESTIONS = {
     "dataset_description": "What data do you need, and what will it be used for?",
-    "sources": "Which source system(s)? (already onboarded: {systems}; or a new system, e.g. \"ERP on PostgreSQL\")",
+    "sources": "Which dataset or product is it? Its exact name (already onboarded: {systems}; or a new one, "
+               "e.g. \"Google Search Console\", \"ERP on PostgreSQL\")",
+    # Asked only for sources the platform can't onboard yet (agent/workflow/nodes/intake.py), not one of the 7 details.
+    "source_origin": "Where does {new_sources} come from? The vendor/app and how the data is reached (API, database, "
+                     "file export…). Paste a link to its docs if you have one.",
     "date_range": "What date range? (e.g. from 2025-01-01 to now)",
     "eta": "When does the data need to go live (ETA)? (YYYY-MM-DD, or e.g. \"in 2 weeks\")",
     "refresh_frequency": "Refresh frequency: daily / hourly / weekly / one-off?",
@@ -33,6 +37,7 @@ class Request(TypedDict, total=False):
     refresh_frequency: str
     grain: str
     consumers: str
+    source_origin: str  # where sources the platform can't onboard yet come from, in the requester's words
 
 
 class AgentState(TypedDict, total=False):

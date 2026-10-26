@@ -57,12 +57,14 @@ The agent needs **7 details**:
 | Detail | Example |
 |---|---|
 | What (dataset description) | Current CRM customers with their segment for a sales dashboard |
-| Sources | `crm` (the question lists the systems onboarded in the ingestion repo; a new one can be named with its type, e.g. "ERP on PostgreSQL") |
+| Sources | `crm` ("Which dataset or product is it?"; the question lists the systems onboarded in the ingestion repo; a new one is named exactly, e.g. "Google Search Console", "ERP on PostgreSQL". Lead-ins such as "product called:" are dropped) |
 | Date range | 2024-01-01 → now |
 | Go-live (ETA) | 2026-11-30 or "in 3 weeks", must be after today |
 | Refresh | daily / hourly / weekly / one-off |
 | Grain | one row per customer |
 | Used by | Sales team, Power BI dashboard |
+
+**Where does it come from?** When a source is one the platform can't onboard yet, the next question, asked on its own, is where it comes from: the vendor/app and how the data is reached (API, database, file export…), with a docs link if the requester has one. The answer goes into the User Story for the Data Team; a pasted link is read first by the web research, and a known vendor name ("Google") is added to the search name.
 
 After each message the agent extracts what it can (rules first; an LLM if configured), validates it, and asks for **at most 3 missing details per turn**. The answers can be numbered (`1. …`, one per line) or labelled (`eta: 2026-11-30`). The go-live date can also be relative: "in 2 weeks", "end of next month", "2 tuần nữa"; for a range such as "in 2 or 3 weeks" the agent takes the earlier date. The agent confirms the date it computed. Invalid values, such as an ETA in the past, are asked again with a ⚠️ note. If nothing in an answer matches the questions, the agent says so and asks again. The **Your request** card on the right fills in as details arrive.
 
@@ -95,7 +97,7 @@ The result is **Feasible**, **Feasible with risks**, or **Gap found**.
 
 If the requester accepted such a source, the agent looks up public documentation, in rounds like a person would:
 
-1. **Round 1:** links the requester pasted are read first. Then one search per topic (access/export, history/retention, rate limits, auth) plus the official docs, with the source name as an exact phrase. Search goes to the self-hosted SearXNG container first, then to Bing/Brave/DuckDuckGo; no API keys. Results that don't name the source, and forum/video sites, are dropped.
+1. **Round 1:** links the requester pasted are read first. Then one search per topic (access/export, history/retention, rate limits, auth) plus the official docs, with the plain source name (no quotes). Search goes to the self-hosted SearXNG container first, then to Bing/Brave/DuckDuckGo; no API keys. Results that don't name the source, and forum/video sites, are dropped.
 2. Reads the best pages (the source's own docs site first) over HTTP, or in the headless browser when a page needs JavaScript, and keeps the most useful sentences about history/retention, quotas, auth and access methods, those with a number first.
 3. **Round 2:** topics still without evidence get follow-up searches on the docs site. Up to 8 pages and 180 seconds per source.
 4. Writes the **top 5 links** (read or not, each with the topics it was found for), **draft source notes** `outputs/<request_id>/source_notes_<source>.yaml` and a list of **questions for the Data Team**. The links are in the User Story, the review panel and the Teams summary; if every search came back empty, a ready-made search link takes their place.

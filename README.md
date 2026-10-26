@@ -30,6 +30,8 @@ Detailed plan: see `PLAN.md` (prototype plan).
 | Added: Docker/Codespaces, PostgreSQL sessions, login with roles | 🟡 Runs in Codespaces (v0.7.0); a full request + approval in Docker still to check |
 | Added: SearXNG + Trafilatura for web research | 🟡 Checked offline; real searches in a codespace pending |
 | Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1 |
+| Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches in a codespace pending |
+| Next: 3 User Stories per request (spike, ingestion, transformation) | ⬜ Planned, see [docs/PHASES.md](docs/PHASES.md#next-phase-3-user-stories-per-request) |
 
 ---
 
@@ -121,18 +123,18 @@ For settings (`.env` / Codespaces secrets), where data is stored, port visibilit
 
 ## Web search and the MCP server
 
-Web research uses [agent/research/websearch/](agent/research/websearch/), a Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT). Search goes to the self-hosted **SearXNG** container first (Docker setups, `SEARXNG_URL`), then to the key-less scrapers (Bing, Brave, DuckDuckGo); no API keys. Pages are read over HTTP with **Trafilatura** for the main text, or in a headless browser when they need JavaScript.
+Web research uses two tools from [agent/research/websearch/](agent/research/websearch/), a Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): **`web_search`** (title, URL, snippet per result) and **`web_fetch`** (main text of one page). Search goes to the self-hosted **SearXNG** container first (Docker setups, `SEARXNG_URL`), then to the key-less scrapers (Bing, Brave, DuckDuckGo); no API keys. Pages are read over HTTP with **Trafilatura** for the main text, or in a headless browser when they need JavaScript.
 
 For each source the platform can't onboard yet, research runs in up to 2 rounds (one search per topic, then follow-ups on the docs site for what is still missing) and hands the Data Team the **top 5 links**, key passages, questions and draft source notes. All of it is unverified and never changes the feasibility result ([details](docs/ARCHITECTURE.md#web-search)).
 
 - **Headless browser (optional):** `python -m playwright install chromium` once (the Playwright package is in `requirements.txt`). Without it, Bing and Brave are skipped (search uses SearXNG, then DuckDuckGo over HTTP) and JavaScript-only pages stay unreadable. Docker: `WITH_BROWSER=true`.
-- **MCP server** with the original's three tools (`full-web-search`, `get-web-search-summaries`, `get-single-web-page-content`), for LM Studio, Claude Desktop or other MCP clients:
+- **MCP server** with the same two tools (`web_search`, `web_fetch`), for LM Studio, Claude Desktop or other MCP clients:
   ```json
   {"mcpServers": {"web-search": {"command": "python", "args": ["-m", "agent.research.websearch.mcp_server"],
                                  "cwd": "/path/to/data-onboarding-agent"}}}
   ```
 
-Key-less search (SearXNG included) scrapes public search engines, so they can rate-limit a network for a while. SearXNG makes it rarer by asking several engines at once. When nothing comes back, the agent says "web search found nothing", gives a ready-made search link instead of the top links, and still asks the Data Team its standard questions.
+Key-less search (SearXNG included) scrapes public search engines, so they can rate-limit a network for a while. SearXNG makes it rarer by asking several engines at once. When nothing comes back, the agent says "web search found nothing", gives a ready-made search link instead of the top links, and still asks the Data Team its standard questions. When results come back but none names the source, it says so instead: that points to a wrong source name, not a blocked engine.
 
 ## Deployment: model on Colab, web app on your machine
 

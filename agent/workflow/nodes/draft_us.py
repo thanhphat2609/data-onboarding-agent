@@ -138,6 +138,8 @@ def render_user_story(state: dict, title: str, description: str, extra_ac: list[
         else:
             note = "can't be onboarded yet — see web research below" if src["source"] in research else "can't be onboarded yet"
             lines.append(f"| {src['source']} | Needs investigation | {note} |")
+    if request.get("source_origin"):
+        lines += ["", f"**Where the new source comes from (requester's words):** {request['source_origin']}"]
 
     lines += ["", "## Proposed pipeline"]
     for src in feas["sources"]:

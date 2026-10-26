@@ -1,11 +1,9 @@
 """Search rate limit (ported from web-search-mcp src/rate-limiter.ts): at most N searches per minute and
-5 at a time, so the engines aren't hammered when several requests are researched at once."""
+5 at a time, so the engines aren't hammered when several requests are researched at once.
+Difference: a search over the limit waits for the next minute instead of failing (research for two sources
+runs more than 10 searches, and the original's error meant "no results" for the rest)."""
 import threading
 import time
-
-
-class RateLimitExceeded(RuntimeError):
-    pass
 
 
 class RateLimiter:
@@ -17,13 +15,15 @@ class RateLimiter:
         self._window_start = time.monotonic()
 
     def execute(self, fn, *args, **kwargs):
-        with self._lock:
-            now = time.monotonic()
-            if now - self._window_start >= 60:
-                self._count, self._window_start = 0, now
-            if self._count >= self.max_per_minute:
-                wait = int(60 - (now - self._window_start)) + 1
-                raise RateLimitExceeded(f"Rate limit exceeded. Please wait {wait} seconds.")
-            self._count += 1
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                if now - self._window_start >= 60:
+                    self._count, self._window_start = 0, now
+                if self._count < self.max_per_minute:
+                    self._count += 1
+                    break
+                wait = 60 - (now - self._window_start)
+            time.sleep(max(wait, 0.1))
         with self._slots:
             return fn(*args, **kwargs)
