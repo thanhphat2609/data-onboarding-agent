@@ -37,10 +37,11 @@ flowchart LR
 | Graph | [agent/workflow/graph.py](../agent/workflow/graph.py) | Wires the nodes and routing functions; compiles with the PostgreSQL checkpointer (`DATABASE_URL`) or SQLite |
 | Nodes | [agent/workflow/nodes/](../agent/workflow/nodes/) | One file per step (see [The graph](#the-graph)) |
 | State | [agent/state.py](../agent/state.py) | `AgentState` TypedDict, the 7 required request fields, the questions for each field |
+| Login | [agent/auth.py](../agent/auth.py) | Data Team accounts from `ACCOUNTS`, requester self-registration (scrypt hashes in the `requesters` table), roles (see [Web UI](#web-ui)) |
 | Extraction | [agent/workflow/extraction.py](../agent/workflow/extraction.py) | Rule-based field extraction (English + Vietnamese keywords) and validation; LLM extraction when a model is configured |
 | Repositories | [agent/repos/__init__.py](../agent/repos/__init__.py), [agent/repos/github.py](../agent/repos/github.py), [agent/repos/dbt_project.py](../agent/repos/dbt_project.py) | Read the two repos (local checkout or GitHub) into one cached `Knowledge`: source templates, connections, jobs, dbt models |
 | Knowledge | [agent/repos/lookup.py](../agent/repos/lookup.py) | `lookup_source(system)`, `search_models(query)` (token-overlap score) over the repos |
-| Web research | [agent/research/investigate.py](../agent/research/investigate.py) | For sources the platform can't onboard yet: find and read public docs, key passages, draft source notes, questions for the Data Team |
+| Web research | [agent/research/investigate.py](../agent/research/investigate.py) | For sources the platform can't onboard yet: research in rounds, top 5 links, key passages, draft source notes, questions for the Data Team (see [Web search](#web-search)) |
 | Web search | [agent/research/websearch/](../agent/research/websearch/) | Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): search through the self-hosted SearXNG container first, then the key-less scrapers (Bing → Brave in an optional headless browser, then DuckDuckGo); page text with Trafilatura over HTTP, with a headless-browser fallback; and an MCP server (`python -m agent.research.websearch.mcp_server`) with the original's three tools |
 | LLM client | [agent/llm/client.py](../agent/llm/client.py), [agent/llm/prompts/](../agent/llm/prompts/) | Optional Ollama client (API key support for the Colab proxy); prompts as Markdown files |
 | Teams | [agent/integrations/teams.py](../agent/integrations/teams.py) | Adaptive Card to a Workflows webhook; without a URL (or on failure) writes `teams_messages.jsonl` |
@@ -169,7 +170,7 @@ The Docker setups run three containers:
 |---|---|---|---|
 | `app` | built from [infrastructure/Dockerfile](../infrastructure/Dockerfile) | Gradio UI + agent | `127.0.0.1:7860` |
 | `postgres` | `postgres:16.15-alpine` | The platform's one PostgreSQL server: `onboarding_agent` (this app), `airflow` and `platform` (data-onboarding-ingestion, its ADR-0011). Creates the Docker network `data-platform` that ingestion's Airflow joins | `127.0.0.1:5432` |
-| `searxng` | `searxng/searxng` | Self-hosted metasearch, the first engine of web research ([Web search](#web-search)); keeps no data | none (app only, `http://searxng:8080`) |
+| `searxng` | `searxng/searxng:2026.9.30-a9d990033` | Self-hosted metasearch, the first engine of web research ([Web search](#web-search)); keeps no data | none (app only, `http://searxng:8080`) |
 
 On VM 1 these run next to data-onboarding-ingestion's Web UI, API, Airflow and Flink JobManager. Deploy this stack first: it creates the network and the database server.
 
@@ -181,7 +182,7 @@ The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks
 
 | Folder | Contains |
 |---|---|
-| `agent/` | `config.py` (settings) and `state.py` (request schema, graph state), used everywhere |
+| `agent/` | `config.py` (settings) and `state.py` (request schema, graph state), used everywhere; `auth.py` (login and roles) |
 | `agent/workflow/` | The LangGraph flow: `graph.py`, `runner.py`, `extraction.py`, `evaluate.py` (replay past requests) and `nodes/` (one module per step) |
 | `agent/repos/` | Knowledge from the two platform repos: loading, GitHub access, dbt parsing, lookups |
 | `agent/research/` | Web research for sources the platform can't onboard yet, and the `websearch/` port |

@@ -151,8 +151,8 @@ Same two stages as data-onboarding-ingestion ([its ADR-0012](https://github.com/
 
 ## Next steps
 
-> **Where we left off (2026-10-25).** v0.7.0 runs in Codespaces: PostgreSQL sessions, login (only the Data Team in `ACCOUNTS`, requesters self-register), Codespaces secrets `PLATFORM_GITHUB_TOKEN` + `ACCOUNTS`, firewall fix on every codespace start. On `main` after v0.7.0, not tagged yet: research in rounds, the source name as an exact phrase, "which product?" for a company name.
-> **To pick up:** (1) after any `git pull`, run `docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`, because the code lives in the image; (2) with a **new** request for a source the platform lacks (e.g. Google Search Console), check the User Story's *Web research* section: searches, kept/off-topic counts, docs site, passages; (3) if it looks right, tag **v0.8.0**; if engines rate-limit (searches with `(0 / 0)`), check the `searxng` container's logs (`docker compose -f infrastructure/non-prod/docker-compose.yml logs searxng`).
+> **Where we left off (2026-10-26).** v0.8.0 is tagged and pushed: research in rounds, the source name as an exact phrase, "which product?" for a company name, top 5 links per source, SearXNG as the first search engine and Trafilatura for page text (no API keys). Only checked offline; the `searxng` container has not run yet.
+> **To pick up:** (1) after any `git pull`, run `docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`, because the code lives in the image; (2) with a **new** request for a source the platform lacks (e.g. Google Search Console), check the User Story's *Web research* section: top links, searches, kept/off-topic counts, docs site, passages; (3) if engines rate-limit (searches with `(0 / 0)`), check the `searxng` container's logs (`docker compose -f infrastructure/non-prod/docker-compose.yml logs searxng`).
 > 2026-10-26: CI runs on every push (green); the Deploy workflow is ready, run by hand as the approval, off until VM 1 exists ([infrastructure/prod/README.md](../infrastructure/prod/README.md)). data-onboarding-ingestion committed its ADR-0011 and expects this stack to host the shared PostgreSQL server; on VM 1 deploy this repo first.
 
 1. Run the notebook on Colab: tool-calling test, pick a model, host the model for the web app.
@@ -169,5 +169,6 @@ From [PLAN.md](../PLAN.md):
 3. Teams bot to approve directly in the thread (replaces the review tab + key)
 4. Create real User Stories in Azure DevOps / Jira
 5. Read lake metadata (e.g. the first `ingest_date` per table) to turn the history risk into a real date check
+6. Idea, to plan once the Data Team has used the flow: after approval, a list of User Stories per kind of work instead of job YAML (jobs are configured in the ingestion UI). New job or new connection: non-prod, then prod (own connection with `kv://` secrets, PR merge, backfill). Source with no template: a spike first, its open questions as acceptance criteria
 
 **MCP for GitHub:** the repos are currently read straight through the GitHub API (more reliable with small models). Once tool calling is stable (after Phase 0), a GitHub MCP server could let the agent read a model's SQL when it needs more detail (e.g. "does this model filter on X?").

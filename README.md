@@ -58,6 +58,7 @@ data-onboarding-agent/
 ├── agent/
 │   ├── config.py              # paths + env vars
 │   ├── state.py               # TypedDict state + request schema
+│   ├── auth.py                # login: Data Team accounts, requester self-registration (scrypt hashes)
 │   ├── workflow/              # the LangGraph flow
 │   │   ├── graph.py           #   build graph, PostgreSQL / SQLite checkpointer
 │   │   ├── runner.py          #   start/reply API for the UI and scripts
@@ -71,12 +72,13 @@ data-onboarding-agent/
 │   │   ├── github.py          #   GitHub REST: file tree + file content
 │   │   └── lookup.py          #   lookup_source, search_models
 │   ├── research/              # sources the platform can't onboard yet
-│   │   ├── investigate.py     #   web research: find docs, key passages, questions, draft notes
-│   │   └── websearch/         #   Python port of web-search-mcp: search, page content, MCP server
+│   │   ├── investigate.py     #   web research in rounds: top 5 links, key passages, questions, draft notes
+│   │   └── websearch/         #   Python port of web-search-mcp: SearXNG + key-less engines, page text, MCP server
 │   ├── llm/                   # optional Ollama client (client.py) + prompts/
 │   └── integrations/teams.py  # Teams webhook (or mock); `python -m agent.integrations.teams <url>` sends a test card
 ├── docs/                      # architecture, how it works, phase status
-├── infrastructure/            # Dockerfile, non-prod/ compose (laptop / Codespaces), prod/ later (VM 1); see infrastructure/README.md
+├── infrastructure/            # Dockerfile, non-prod/ compose (laptop / Codespaces), prod/ (VM 1, draft), postgres/ init, searxng/ settings; see infrastructure/README.md
+├── .github/workflows/         # ci.yml on every push, deploy.yml run by hand (the approval) once VM 1 exists
 ├── requirements.txt           # dependencies (Chromium for the headless browser is a separate, optional download)
 ├── DEMO.md                    # team demo runbook
 └── outputs/                   # results per request_id (gitignored)
@@ -92,7 +94,7 @@ There is no sample data in this repo. The agent reads the two platform repos on 
 | | `pipelines/jobs/*.yaml` | Tables already landing in the lake (`<system>/<schema>/<table>`) |
 | data-onboarding-transformation | `models/**/*.yml` (or `target/manifest.json`) | dbt models that already exist |
 
-Set `INGESTION_PATH` / `TRANSFORMATION_PATH` to local checkouts (e.g. `../data-onboarding-ingestion`); otherwise they are read from GitHub with `GITHUB_TOKEN` (fine-grained, *Contents: Read-only* on both repos).
+Set `INGESTION_PATH` / `TRANSFORMATION_PATH` to local checkouts (e.g. `../data-onboarding-ingestion`); otherwise they are read from GitHub with `PLATFORM_GITHUB_TOKEN` or `GITHUB_TOKEN` (fine-grained, *Contents: Read-only* on both repos; use `PLATFORM_GITHUB_TOKEN` in Codespaces).
 
 ## Run locally
 
@@ -121,14 +123,16 @@ For settings (`.env` / Codespaces secrets), where data is stored, port visibilit
 
 Web research uses [agent/research/websearch/](agent/research/websearch/), a Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT). Search goes to the self-hosted **SearXNG** container first (Docker setups, `SEARXNG_URL`), then to the key-less scrapers (Bing, Brave, DuckDuckGo); no API keys. Pages are read over HTTP with **Trafilatura** for the main text, or in a headless browser when they need JavaScript.
 
-- **Headless browser (optional):** `python -m playwright install chromium` once (the Playwright package is in `requirements.txt`). Without it, search falls back to DuckDuckGo over HTTP and JavaScript-only pages stay unreadable. Docker: `WITH_BROWSER=true`.
+For each source the platform can't onboard yet, research runs in up to 2 rounds (one search per topic, then follow-ups on the docs site for what is still missing) and hands the Data Team the **top 5 links**, key passages, questions and draft source notes. All of it is unverified and never changes the feasibility result ([details](docs/ARCHITECTURE.md#web-search)).
+
+- **Headless browser (optional):** `python -m playwright install chromium` once (the Playwright package is in `requirements.txt`). Without it, Bing and Brave are skipped (search uses SearXNG, then DuckDuckGo over HTTP) and JavaScript-only pages stay unreadable. Docker: `WITH_BROWSER=true`.
 - **MCP server** with the original's three tools (`full-web-search`, `get-web-search-summaries`, `get-single-web-page-content`), for LM Studio, Claude Desktop or other MCP clients:
   ```json
   {"mcpServers": {"web-search": {"command": "python", "args": ["-m", "agent.research.websearch.mcp_server"],
                                  "cwd": "/path/to/data-onboarding-agent"}}}
   ```
 
-Key-less search scrapes public search pages, so engines can rate-limit a network for a while; the agent then reports "web search found nothing" and still asks the Data Team its standard questions.
+Key-less search (SearXNG included) scrapes public search engines, so they can rate-limit a network for a while. SearXNG makes it rarer by asking several engines at once. When nothing comes back, the agent says "web search found nothing", gives a ready-made search link instead of the top links, and still asks the Data Team its standard questions.
 
 ## Deployment: model on Colab, web app on your machine
 
@@ -209,4 +213,4 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 
 ## After the prototype
 
-Roadmap (VM + Postgres, Teams bot approvals, real tickets, Snowflake metadata, GitHub MCP): see [docs/PHASES.md](docs/PHASES.md#after-the-prototype).
+Roadmap (prod on VM 1, a production model, Teams bot approvals, real tickets, lake metadata, GitHub MCP): see [docs/PHASES.md](docs/PHASES.md#after-the-prototype).

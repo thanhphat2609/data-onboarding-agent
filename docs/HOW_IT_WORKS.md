@@ -93,11 +93,12 @@ The result is **Feasible**, **Feasible with risks**, or **Gap found**.
 
 ### 3b. Sources the platform can't onboard yet: `investigate_source`
 
-If the requester accepted such a source, the agent looks up public documentation:
+If the requester accepted such a source, the agent looks up public documentation, in rounds like a person would:
 
-1. Links the requester pasted → a web search for the rest, max 3 pages. The search is the agent's port of web-search-mcp: Bing and Brave in a headless browser when one is installed, otherwise DuckDuckGo.
-2. Reads them over HTTP, or in the headless browser when a page needs JavaScript, and keeps sentences about history/retention, quotas, auth and access methods.
-3. Writes **draft source notes** `outputs/<request_id>/source_notes_<source>.yaml` and a list of **questions for the Data Team**.
+1. **Round 1:** links the requester pasted are read first. Then one search per topic (access/export, history/retention, rate limits, auth) plus the official docs, with the source name as an exact phrase. Search goes to the self-hosted SearXNG container first, then to Bing/Brave/DuckDuckGo; no API keys. Results that don't name the source, and forum/video sites, are dropped.
+2. Reads the best pages (the source's own docs site first) over HTTP, or in the headless browser when a page needs JavaScript, and keeps the most useful sentences about history/retention, quotas, auth and access methods, those with a number first.
+3. **Round 2:** topics still without evidence get follow-up searches on the docs site. Up to 8 pages and 180 seconds per source.
+4. Writes the **top 5 links** (read or not, each with the topics it was found for), **draft source notes** `outputs/<request_id>/source_notes_<source>.yaml` and a list of **questions for the Data Team**. The links are in the User Story, the review panel and the Teams summary; if every search came back empty, a ready-made search link takes their place.
 
 All of this is marked **unverified** and never changes the feasibility result. Only the source name and fixed keywords are sent to the search engine, never the request text. Turn it off with `WEB_RESEARCH=0`.
 
@@ -144,7 +145,7 @@ outputs/REQ-20261023-d92104/
 | Field extraction | Keywords, dates, numbered/labelled answers | Plus free-text understanding; rules still win for dates, sources, refresh |
 | Questions | Fixed wording | Rephrased to sound natural |
 | User Story | Template, title from the description | Template, LLM-written title and description |
-| Web research | Key passages + standard questions | Plus a summary and access methods in the draft source notes |
+| Web research | Top 5 links, key passages + standard questions | Plus a summary and access methods in the draft source notes |
 | Routing, validation, feasibility | Code | Code (unchanged) |
 
 The header pill shows which mode is active. Switch it in **⚙️ Settings → LLM**.
