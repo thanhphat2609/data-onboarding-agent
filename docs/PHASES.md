@@ -155,6 +155,7 @@ Same two stages as data-onboarding-ingestion ([its ADR-0012](https://github.com/
 - 🟡 [deploy.yml](../.github/workflows/deploy.yml) run by hand (Actions → Run workflow, the approval), only for a commit on `main` with green CI: over SSH on VM 1 `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune old images and build cache. Off until the variable `PROD_DEPLOY_ENABLED` is `true`
 - 🟡 [infrastructure/prod/](../infrastructure/prod/): compose for VM 1 (postgres + app, required passwords, creates `data-platform`), `.env.example`, `deploy.sh`
 - ⬜ When VM 1 exists: GitHub secrets and variables from the prod README, then the first deploy (this repo before data-onboarding-ingestion)
+- 🟡 2026-10-26: [delete-merged-branch.yml](../.github/workflows/delete-merged-branch.yml) deletes a pull request's branch when it is merged (one branch per change, so merged branches don't pile up). Only while the branch still points at the merged commit (new work pushed after the merge is kept); never the default branch or a fork's branch. Run it by hand once (Actions → Delete merged branches → Run workflow) for the branches merged before it existed. YAML checked locally; ⬜ first real run on GitHub
 
 ## Next phase: 3 User Stories per request
 > ⬜ Planned 2026-10-26 with the requester-side decisions below; not started. Today one User Story is drafted after approval.
