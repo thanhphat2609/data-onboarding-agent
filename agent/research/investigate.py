@@ -9,6 +9,8 @@ Research runs in rounds, like a person (or Claude) researching instead of a sing
   4. Find gaps: topics with no evidence yet (or history without a number) get follow-up searches on the docs
      site (`site:<docs host> …`), until RESEARCH_ROUNDS, RESEARCH_MAX_PAGES or RESEARCH_TIME_BUDGET_S runs out.
   5. Show the work: every query is kept in findings["searches"] and listed in the User Story.
+  6. Top links: the TOP_LINKS most relevant links from every search, read or not, so the team always has a place
+     to start even when reading or summarising the pages fails.
 Search and page reading need no API key (agent/research/websearch, a port of web-search-mcp).
 Only the source name and fixed keywords leave the machine, never the request text.
 
@@ -19,7 +21,7 @@ import logging
 import re
 import time
 from collections import Counter
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 
 import yaml
 
@@ -32,6 +34,7 @@ log = logging.getLogger(__name__)
 
 MAX_PASSAGE_CHARS = 4000  # per page: the most useful sentences, not the first ones
 LLM_MAX_CHARS = 9000  # all passages sent to the LLM together, small enough for a 7B model's context
+TOP_LINKS = 5  # links listed per source in the User Story, the review panel and the Teams summary
 URL_RE = re.compile(r"https?://[^\s<>\"')\]]+")
 # Results from these hosts are opinions/videos, not documentation.
 SKIP_HOSTS = ("youtube.", "reddit.", "facebook.", "linkedin.", "quora.", "twitter.", "x.com", "instagram.", "tiktok.com/@")
@@ -103,9 +106,11 @@ def _about_source(result, words: list[str]) -> bool:
     return all(w in text for w in words)
 
 
-def _search(query: str, source: str, findings: dict, round_no: int, errors: list[str], n: int = 8) -> list[str]:
+def _search(query: str, source: str, findings: dict, round_no: int, errors: list[str], topic: str, hits: dict,
+            n: int = 8) -> list[str]:
     """One key-less web search, logged in findings["searches"]: kept results are about the source and not a
-    forum/video site. Failures (rate limits) just mean no results."""
+    forum/video site, and are added to `hits` (url -> title + the topics whose searches found it).
+    Failures (rate limits) just mean no results."""
     try:
         results = websearch.search(query, n).results
     except Exception as exc:  # noqa: BLE001
@@ -115,6 +120,11 @@ def _search(query: str, source: str, findings: dict, round_no: int, errors: list
     words = _source_words(source)
     kept = [r.url for r in results if _about_source(r, words) and not any(h in r.url.lower() for h in SKIP_HOSTS)]
     findings["searches"].append({"round": round_no, "query": query, "results": len(kept), "off_topic": len(results) - len(kept)})
+    titles = {r.url: r.title for r in results}
+    for url in kept:
+        hit = hits.setdefault(url, {"title": titles[url], "topics": []})
+        if topic not in hit["topics"]:
+            hit["topics"].append(topic)
     return kept
 
 
@@ -139,6 +149,26 @@ def _missing_topics(pages: list[dict]) -> list[str]:
     if "history" not in missing and not any(p["topic"] == "history" and p["has_number"] for p in found):
         missing.append("history")
     return missing
+
+
+def _top_links(source: str, pasted: list[str], hits: dict, pages: list[dict], docs_host: str | None) -> list[dict]:
+    """The TOP_LINKS most relevant links, read or not: links the requester pasted first, then by docs site,
+    pages with useful sentences, and how many topic searches found the page. With no result at all,
+    a ready-made search link, so there is still somewhere to start."""
+    read = {p["url"]: p for p in pages if not p.get("error")}
+
+    def score(url: str) -> int:
+        return _priority(url, docs_host) + 5 * bool(read.get(url, {}).get("passages")) + 3 * len(hits[url]["topics"])
+
+    ranked = sorted((u for u in hits if u not in pasted), key=score, reverse=True)
+    links = [{"url": u, "title": read.get(u, {}).get("title") or u, "found_for": ["requester"]} for u in pasted]
+    links += [{"url": u, "title": read.get(u, {}).get("title") or hits[u]["title"] or u, "found_for": hits[u]["topics"]}
+              for u in ranked]
+    if not links:
+        query = DOCS_QUERY.format(source=_phrase(source))
+        return [{"url": "https://www.google.com/search?q=" + quote_plus(query), "title": f"Search the web: {query}",
+                 "found_for": ["no search result, try this search"]}]
+    return links[:TOP_LINKS]
 
 
 # ---------- reading pages ----------
@@ -276,6 +306,7 @@ def _research(source: str, request: dict, messages: list[dict], findings: dict) 
     started = time.monotonic()
     errors: list[str] = []
     seen: set[str] = set()
+    hits: dict[str, dict] = {}
 
     def time_left() -> bool:
         return time.monotonic() - started < config.RESEARCH_TIME_BUDGET_S
@@ -295,9 +326,9 @@ def _research(source: str, request: dict, messages: list[dict], findings: dict) 
     # Round 1: plan one search per topic, read the best pages; keep some page budget for the follow-ups.
     pasted = links_from_messages(messages, source, request.get("sources", []))
     found: list[str] = []
-    for query in [DOCS_QUERY, *TOPIC_QUERIES.values()]:
+    for topic, query in [("docs", DOCS_QUERY), *TOPIC_QUERIES.items()]:
         if time_left():
-            found += _search(query.format(source=_phrase(source)), source, findings, 1, errors)
+            found += _search(query.format(source=_phrase(source)), source, findings, 1, errors, topic, hits)
     found = list(dict.fromkeys(found))
     docs_host = _docs_host(found, source)
     findings["docs_site"] = docs_host
@@ -316,11 +347,12 @@ def _research(source: str, request: dict, messages: list[dict], findings: dict) 
             # The source name stays in: a docs host like developers.google.com covers many products.
             query = f"site:{docs_host} {_phrase(source)} {FOLLOW_UP[topic]}" if docs_host else f"{_phrase(source)} {FOLLOW_UP[topic]} documentation"
             if time_left():
-                more += _search(query, source, findings, round_no, errors)
+                more += _search(query, source, findings, round_no, errors, topic, hits)
         more = sorted(dict.fromkeys(more), key=lambda u: _priority(u, docs_host), reverse=True)
         read([(u, "follow-up search") for u in more], 2 * len(missing), round_no)
         findings["rounds"] = round_no
 
+    findings["links"] = _top_links(source, pasted, hits, findings["pages"], docs_host)
     if not found and not pasted and not any(s["results"] for s in findings["searches"]):
         findings["notes"].append(
             "web search found nothing" + (f" ({errors[0]})" if errors else " (search engines may be rate-limiting this network)")
@@ -335,7 +367,7 @@ def investigate(source: str, request: dict, messages: list[dict]) -> dict:
     """Research one source. Never raises: network problems end up in `notes`."""
     findings = {
         "source": source, "pages": [], "pages_read": 0, "key_passages": [], "summary": "", "access_methods": [],
-        "notes": [], "searches": [], "docs_site": None, "rounds": 0,
+        "notes": [], "searches": [], "docs_site": None, "rounds": 0, "links": [],
     }
     if config.WEB_RESEARCH:
         _research(source, request, messages, findings)

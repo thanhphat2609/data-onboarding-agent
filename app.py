@@ -195,6 +195,11 @@ def _research_html(f: dict) -> str:
     parts = [f'<div class="meta">Web research: {searched}{f.get("pages_read", 0)} page(s) read, unverified.</div>']
     if f.get("summary"):
         parts.append(f'<div class="meta">{_esc(f["summary"])}</div>')
+    for i, link in enumerate(f.get("links", []), 1):
+        parts.append(
+            f'<div class="meta">{i}. <a href="{_esc(link["url"])}" target="_blank" rel="noopener">{_esc(link["title"][:80])}</a>'
+            f' <span class="muted">({_esc(", ".join(link["found_for"]))})</span></div>'
+        )
     for p in f.get("key_passages", [])[:3]:
         link = f' <a href="{_esc(p["url"])}" target="_blank" rel="noopener">source</a>' if str(p.get("url", "")).startswith("http") else ""
         parts.append(f'<div class="meta">• {_esc(p["topic"])}: “{_esc(p["text"])}”{link}</div>')

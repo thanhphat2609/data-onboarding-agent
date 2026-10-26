@@ -10,6 +10,8 @@ def _questions(research: dict) -> list[str]:
     lines = ["", "**Questions for the Data Team** (sources the platform can't onboard yet; web research in the User Story, unverified):"]
     for source, f in research.items():
         lines += [f"- {source}: {q}" for q in f.get("questions") or []]
+        if f.get("links"):
+            lines.append(f"- {source} links: " + ", ".join(f"[{i}]({link['url']})" for i, link in enumerate(f["links"], 1)))
     return lines + [""]
 
 

@@ -31,6 +31,10 @@ def research_section(research: dict) -> list[str]:
         lines.append(f"**{source}**")
         if f.get("summary"):
             lines.append(f["summary"])
+        if f.get("links"):
+            lines.append("- Top links (most relevant first, found for):")
+            lines += [f"  {i}. [{link['title'][:80]}]({link['url']}) — {', '.join(link['found_for'])}"
+                      for i, link in enumerate(f["links"], 1)]
         for m in f.get("access_methods") or []:
             limit = f", lookback ~{m['max_lookback_days']} days" if m.get("max_lookback_days") else ""
             lines.append(f"- Possible access: `{m['type']}`{limit} — {m.get('notes', '')} ([source]({m.get('evidence')}))")
