@@ -18,6 +18,10 @@ sequenceDiagram
     loop until all 7 details are known (max 3 questions per turn)
         A->>R: Asks for the missing details
         R->>A: Answers
+        opt A source the platform can't onboard yet was named
+            A->>R: "Where does it come from?" (vendor/app, API/database/file, docs link)
+            R->>A: Answers
+        end
     end
     A->>T: "New data request" card
     A->>A: Check the ingestion + transformation repos per source

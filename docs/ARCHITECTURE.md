@@ -36,9 +36,9 @@ flowchart LR
 | Sessions | [agent/workflow/sessions.py](../agent/workflow/sessions.py) | `SessionStore`: one row per thread_id (owner, who typed it, status, reviewer) in the checkpointer's database, so lists and ownership checks are plain SQL |
 | Graph | [agent/workflow/graph.py](../agent/workflow/graph.py) | Wires the nodes and routing functions; compiles with the PostgreSQL checkpointer (`DATABASE_URL`) or SQLite |
 | Nodes | [agent/workflow/nodes/](../agent/workflow/nodes/) | One file per step (see [The graph](#the-graph)) |
-| State | [agent/state.py](../agent/state.py) | `AgentState` TypedDict, the 7 required request fields, the questions for each field |
+| State | [agent/state.py](../agent/state.py) | `AgentState` TypedDict, the 7 required request fields, the questions for each field, plus `source_origin` (asked only for sources the platform can't onboard yet, not one of the 7) |
 | Login | [agent/auth.py](../agent/auth.py) | Data Team accounts from `ACCOUNTS`, requester self-registration (scrypt hashes in the `requesters` table), roles (see [Web UI](#web-ui)) |
-| Extraction | [agent/workflow/extraction.py](../agent/workflow/extraction.py) | Rule-based field extraction (English + Vietnamese keywords) and validation; LLM extraction when a model is configured |
+| Extraction | [agent/workflow/extraction.py](../agent/workflow/extraction.py) | Rule-based field extraction (English + Vietnamese keywords) and validation; source names are cleaned (lead-ins such as "product called:" and guesses in parentheses dropped; a company name alone asks which product); LLM extraction when a model is configured |
 | Repositories | [agent/repos/__init__.py](../agent/repos/__init__.py), [agent/repos/github.py](../agent/repos/github.py), [agent/repos/dbt_project.py](../agent/repos/dbt_project.py) | Read the two repos (local checkout or GitHub) into one cached `Knowledge`: source templates, connections, jobs, dbt models |
 | Knowledge | [agent/repos/lookup.py](../agent/repos/lookup.py) | `lookup_source(system)`, `search_models(query)` (token-overlap score) over the repos |
 | Web research | [agent/research/investigate.py](../agent/research/investigate.py) | For sources the platform can't onboard yet: research in rounds, top 5 links, key passages, draft source notes, questions for the Data Team (see [Web search](#web-search)) |
@@ -68,7 +68,7 @@ flowchart TD
 
 | Node | File | What it does | Writes to state |
 |---|---|---|---|
-| `intake` | [intake.py](../agent/workflow/nodes/intake.py) | Extracts fields from new user messages, validates them (dates, ETA after today, refresh frequency) and decides what to ask next: missing fields (max 3 per turn) or a gap to resolve | `request`, `missing_fields`, `errors`, `gap`, `accepted_gaps`, `pending_question` |
+| `intake` | [intake.py](../agent/workflow/nodes/intake.py) | Extracts fields from new user messages, validates them (dates, ETA after today, refresh frequency) and decides what to ask next: missing fields (max 3 per turn), "Where does it come from?" on its own right after a source the platform can't onboard yet, or a gap to resolve | `request`, `missing_fields`, `errors`, `gap`, `accepted_gaps`, `pending_question` |
 | `ask_user` | [intake.py](../agent/workflow/nodes/intake.py) | `interrupt()`: pauses the graph until the requester answers | `messages` |
 | `notify` | [notify.py](../agent/workflow/nodes/notify.py) | Once per request: writes `request.json`, posts "New data request" to Teams | `thread_ref` |
 | `catalog_check` | [catalog_check.py](../agent/workflow/nodes/catalog_check.py) | Searches the dbt models of the transformation repo per source system | `existing_models` |
@@ -183,9 +183,9 @@ The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks
 | Folder | Contains |
 |---|---|
 | `agent/` | `config.py` (settings) and `state.py` (request schema, graph state), used everywhere; `auth.py` (login and roles) |
-| `agent/workflow/` | The LangGraph flow: `graph.py`, `runner.py`, `extraction.py`, `evaluate.py` (replay past requests) and `nodes/` (one module per step) |
+| `agent/workflow/` | The LangGraph flow: `graph.py`, `runner.py`, `sessions.py` (sessions table), `extraction.py`, `followup.py` (messages while waiting for the Data Team), `evaluate.py` (replay past requests) and `nodes/` (one module per step) |
 | `agent/repos/` | Knowledge from the two platform repos: loading, GitHub access, dbt parsing, lookups |
-| `agent/research/` | Web research for sources the platform can't onboard yet, and the `websearch/` port |
+| `agent/research/` | Web research for sources the platform can't onboard yet (`investigate.py`), and the `websearch/` port with its two tools: `web_search` (`engines.py`) and `web_fetch` (`content.py`, `extract.py`), plus `browser.py`, `ratelimit.py`, `models.py` and `mcp_server.py` |
 | `agent/llm/` | Optional Ollama client and its prompts |
 | `agent/integrations/` | Teams webhook |
 
