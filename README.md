@@ -60,29 +60,49 @@ data-onboarding-agent/
 │   └── ollama_auth_proxy.py   # API-key proxy in front of Ollama (run by the notebook on Colab)
 ├── agent/
 │   ├── config.py              # paths + env vars
-│   ├── state.py               # TypedDict state + request schema
+│   ├── state.py               # TypedDict state + request schema (7 fields + source_origin)
 │   ├── auth.py                # login: Data Team accounts, requester self-registration (scrypt hashes)
 │   ├── workflow/              # the LangGraph flow
 │   │   ├── graph.py           #   build graph, PostgreSQL / SQLite checkpointer
 │   │   ├── runner.py          #   start/reply API for the UI and scripts
 │   │   ├── sessions.py        #   sessions table: owner, status, reviewer per thread_id
-│   │   ├── extraction.py      #   field extraction (rule-based) + validation
+│   │   ├── extraction.py      #   field extraction (rule-based) + validation, source name cleanup
+│   │   ├── followup.py        #   messages while waiting for the Data Team: questions answered, changes confirmed
 │   │   ├── evaluate.py        #   run past requests, compare with expectations + team handling
-│   │   └── nodes/             #   one file per node
+│   │   └── nodes/             #   one file per node:
+│   │       ├── intake.py      #     intake + ask_user (incl. "Where does it come from?")
+│   │       ├── notify.py      #     "New data request" Teams card
+│   │       ├── catalog_check.py #   related dbt models per source
+│   │       ├── feasibility.py #     per source: dbt model → landed → new job → new connection → gap
+│   │       ├── investigate.py #     web research for sources the platform can't onboard yet
+│   │       ├── approval.py    #     pause for the Data Team
+│   │       ├── draft_us.py    #     User Story
+│   │       ├── summary.py     #     final summary + Teams card
+│   │       └── common.py      #     shared helpers (today, output folder)
 │   ├── repos/                 # knowledge from the ingestion + transformation repos (local checkout or GitHub)
 │   │   ├── __init__.py        #   load / get / reload, parse templates, connections, jobs
 │   │   ├── dbt_project.py     #   dbt models from schema .yml files or manifest.json
 │   │   ├── github.py          #   GitHub REST: file tree + file content
-│   │   └── lookup.py          #   lookup_source, search_models
+│   │   └── lookup.py          #   lookup_source, search_models (also the notebook's tool-calling test)
 │   ├── research/              # sources the platform can't onboard yet
 │   │   ├── investigate.py     #   web research in rounds: top 5 links, key passages, questions, draft notes
-│   │   └── websearch/         #   web_search + web_fetch (port of web-search-mcp): SearXNG → Brave → DuckDuckGo, page text, MCP server
+│   │   └── websearch/         #   two tools, web_search + web_fetch (port of web-search-mcp, LICENSE kept):
+│   │       ├── engines.py     #     web_search: SearXNG → Brave (headless browser) → DuckDuckGo (ddgs)
+│   │       ├── content.py     #     web_fetch: HTTP, headless-browser fallback
+│   │       ├── extract.py     #     main page text (Trafilatura, rules as fallback)
+│   │       ├── browser.py     #     optional headless Chromium (Playwright)
+│   │       ├── ratelimit.py   #     max 10 searches a minute (waits)
+│   │       ├── models.py      #     SearchResult, SearchResponse, Page
+│   │       └── mcp_server.py  #     the two tools as an MCP server
 │   ├── llm/                   # optional Ollama client (client.py) + prompts/
 │   └── integrations/teams.py  # Teams webhook (or mock); `python -m agent.integrations.teams <url>` sends a test card
-├── docs/                      # architecture, how it works, phase status
+├── docs/                      # architecture, how it works, phase status, PostgreSQL queries
 ├── infrastructure/            # Dockerfile, non-prod/ compose (laptop / Codespaces), prod/ (VM 1, draft), postgres/ init, searxng/ settings; see infrastructure/README.md
+├── .devcontainer/             # Codespaces: runs infrastructure/non-prod/codespace-network.sh on start
 ├── .github/workflows/         # ci.yml on every push, deploy.yml run by hand (the approval) once VM 1 exists
 ├── requirements.txt           # dependencies (Chromium for the headless browser is a separate, optional download)
+├── CLAUDE.md                  # rules for working on this repo (docs updated with every change)
+├── PLAN.md                    # the original prototype plan
 ├── DEMO.md                    # team demo runbook
 └── outputs/                   # results per request_id (gitignored)
 ```

@@ -183,9 +183,9 @@ The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks
 | Folder | Contains |
 |---|---|
 | `agent/` | `config.py` (settings) and `state.py` (request schema, graph state), used everywhere; `auth.py` (login and roles) |
-| `agent/workflow/` | The LangGraph flow: `graph.py`, `runner.py`, `extraction.py`, `evaluate.py` (replay past requests) and `nodes/` (one module per step) |
+| `agent/workflow/` | The LangGraph flow: `graph.py`, `runner.py`, `sessions.py` (sessions table), `extraction.py`, `followup.py` (messages while waiting for the Data Team), `evaluate.py` (replay past requests) and `nodes/` (one module per step) |
 | `agent/repos/` | Knowledge from the two platform repos: loading, GitHub access, dbt parsing, lookups |
-| `agent/research/` | Web research for sources the platform can't onboard yet, and the `websearch/` port |
+| `agent/research/` | Web research for sources the platform can't onboard yet (`investigate.py`), and the `websearch/` port with its two tools: `web_search` (`engines.py`) and `web_fetch` (`content.py`, `extract.py`), plus `browser.py`, `ratelimit.py`, `models.py` and `mcp_server.py` |
 | `agent/llm/` | Optional Ollama client and its prompts |
 | `agent/integrations/` | Teams webhook |
 
