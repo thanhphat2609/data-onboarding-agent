@@ -11,8 +11,9 @@ Research runs in rounds, like a person (or Claude) researching instead of a sing
   5. Show the work: every query is kept in findings["searches"] and listed in the User Story.
   6. Top links: the TOP_LINKS most relevant links from every search, read or not, so the team always has a place
      to start even when reading or summarising the pages fails.
-Search and page reading need no API key (agent/research/websearch, a port of web-search-mcp).
-Only the source name and fixed keywords leave the machine, never the request text.
+Everything goes through two tools, web_search and web_fetch (agent/research/websearch, no API key).
+Only the source name (plus its vendor, when the requester named a known one as the origin) and fixed keywords
+leave the machine, never the request text.
 
 Findings are UNVERIFIED. They never change the feasibility decision; they go into the User Story
 and the Teams summary as research + questions for the Data Team to confirm.
@@ -26,7 +27,7 @@ from urllib.parse import quote_plus, urlparse
 import yaml
 
 from agent import config
-from agent.workflow.extraction import norm
+from agent.workflow.extraction import VENDOR_PRODUCTS, norm
 from agent.llm.client import get_llm, load_prompt, safe_call
 from agent.research import websearch
 
@@ -49,7 +50,8 @@ TOPICS = {
 NUMBER_UNIT_RE = re.compile(r"\b\d+\s*(?:day|month|year)s?\b", re.I)
 
 # Round 1: one search per topic plus the official docs. Fixed words only: the request text never leaves the machine.
-# {source} is the source name as an exact phrase ("google search console"), so engines don't drift to related products.
+# {source} is the plain source name (google search console). Not an exact phrase: quoted queries often get no
+# results at all; results that drift to other products are dropped by _about_source instead.
 DOCS_QUERY = "{source} developer documentation"
 TOPIC_QUERIES = {
     "access": "{source} API export data documentation",
@@ -90,9 +92,12 @@ def _rank(url: str) -> int:
     return sum(h in host for h in DOC_HINTS) * 2 + sum(f"/{h}" in path for h in DOC_HINTS)
 
 
-def _phrase(source: str) -> str:
-    """The source name as an exact-phrase search term: "google search console"."""
-    return f'"{norm(source)}"'
+def search_name(source: str, origin: str = "") -> str:
+    """The source name as searched: "search console" from "Google" -> "google search console". Only a known
+    vendor name is taken from the origin answer, so the requester's own words stay on this machine."""
+    name = norm(source)
+    vendor = next((v for v in VENDOR_PRODUCTS if re.search(rf"\b{v}\b", norm(origin or ""))), None)
+    return f"{vendor} {name}" if vendor and not re.search(rf"\b{vendor}\b", name) else name
 
 
 def _source_words(source: str) -> list[str]:
@@ -108,11 +113,11 @@ def _about_source(result, words: list[str]) -> bool:
 
 def _search(query: str, source: str, findings: dict, round_no: int, errors: list[str], topic: str, hits: dict,
             n: int = 8) -> list[str]:
-    """One key-less web search, logged in findings["searches"]: kept results are about the source and not a
+    """One web_search, logged in findings["searches"]: kept results are about the source and not a
     forum/video site, and are added to `hits` (url -> title + the topics whose searches found it).
     Failures (rate limits) just mean no results."""
     try:
-        results = websearch.search(query, n).results
+        results = websearch.web_search(query, n).results
     except Exception as exc:  # noqa: BLE001
         log.warning("Web search failed for %r: %s", query, exc)
         errors.append(str(exc))
@@ -165,7 +170,7 @@ def _top_links(source: str, pasted: list[str], hits: dict, pages: list[dict], do
     links += [{"url": u, "title": read.get(u, {}).get("title") or hits[u]["title"] or u, "found_for": hits[u]["topics"]}
               for u in ranked]
     if not links:
-        query = DOCS_QUERY.format(source=_phrase(source))
+        query = DOCS_QUERY.format(source=source)
         return [{"url": "https://www.google.com/search?q=" + quote_plus(query), "title": f"Search the web: {query}",
                  "found_for": ["no search result, try this search"]}]
     return links[:TOP_LINKS]
@@ -174,8 +179,8 @@ def _top_links(source: str, pasted: list[str], hits: dict, pages: list[dict], do
 # ---------- reading pages ----------
 
 def fetch_page(url: str) -> dict:
-    """Read one page and return {"url", "title", "text", "via"} or {"url", "error"}."""
-    page = websearch.fetch(url, timeout=15)
+    """Read one page with web_fetch; {"url", "title", "text", "via"} or {"url", "error"}."""
+    page = websearch.web_fetch(url, timeout=15)
     if page.fetch_status != "success":
         return {"url": url, "error": page.error}
     return {"url": url, "title": page.title or url, "text": page.content, "via": page.via}
@@ -325,10 +330,11 @@ def _research(source: str, request: dict, messages: list[dict], findings: dict) 
 
     # Round 1: plan one search per topic, read the best pages; keep some page budget for the follow-ups.
     pasted = links_from_messages(messages, source, request.get("sources", []))
+    name = search_name(source, request.get("source_origin", ""))
     found: list[str] = []
     for topic, query in [("docs", DOCS_QUERY), *TOPIC_QUERIES.items()]:
         if time_left():
-            found += _search(query.format(source=_phrase(source)), source, findings, 1, errors, topic, hits)
+            found += _search(query.format(source=name), name, findings, 1, errors, topic, hits)
     found = list(dict.fromkeys(found))
     docs_host = _docs_host(found, source)
     findings["docs_site"] = docs_host
@@ -345,18 +351,24 @@ def _research(source: str, request: dict, messages: list[dict], findings: dict) 
         more: list[str] = []
         for topic in missing:
             # The source name stays in: a docs host like developers.google.com covers many products.
-            query = f"site:{docs_host} {_phrase(source)} {FOLLOW_UP[topic]}" if docs_host else f"{_phrase(source)} {FOLLOW_UP[topic]} documentation"
+            query = f"site:{docs_host} {name} {FOLLOW_UP[topic]}" if docs_host else f"{name} {FOLLOW_UP[topic]} documentation"
             if time_left():
-                more += _search(query, source, findings, round_no, errors, topic, hits)
+                more += _search(query, name, findings, round_no, errors, topic, hits)
         more = sorted(dict.fromkeys(more), key=lambda u: _priority(u, docs_host), reverse=True)
         read([(u, "follow-up search") for u in more], 2 * len(missing), round_no)
         findings["rounds"] = round_no
 
-    findings["links"] = _top_links(source, pasted, hits, findings["pages"], docs_host)
+    findings["links"] = _top_links(name, pasted, hits, findings["pages"], docs_host)
     if not found and not pasted and not any(s["results"] for s in findings["searches"]):
-        findings["notes"].append(
-            "web search found nothing" + (f" ({errors[0]})" if errors else " (search engines may be rate-limiting this network)")
-        )
+        off_topic = sum(s.get("off_topic", 0) for s in findings["searches"])
+        if off_topic:
+            findings["notes"].append(
+                f"web search returned {off_topic} result(s), but none named `{name}`: check the source name"
+            )
+        else:
+            findings["notes"].append(
+                "web search found nothing" + (f" ({errors[0]})" if errors else " (search engines may be rate-limiting this network)")
+            )
     if not time_left():
         findings["notes"].append(f"research stopped at the time budget ({config.RESEARCH_TIME_BUDGET_S} s)")
     if missing := _missing_topics(findings["pages"]):

@@ -30,6 +30,7 @@ FIELD_LABELS = {
     "refresh_frequency": ["refresh_frequency", "refresh", "tần suất", "frequency"],
     "grain": ["grain", "mức chi tiết", "độ chi tiết", "granularity"],
     "consumers": ["consumers", "consumer", "used by", "users", "người dùng", "ai dùng", "dùng ở đâu", "sử dụng", "người sử dụng"],
+    "source_origin": ["source_origin", "origin", "comes from", "come from", "where from", "xuất xứ", "lấy từ"],
 }
 
 LABEL_LINE_RE = re.compile(r"^\s*[-*•]?\s*(?P<label>[^:=\n]{1,40}?)\s*[:=]\s*(?P<value>.+)$")
@@ -157,10 +158,14 @@ def parse_range(text: str, today: date) -> dict | None:
     return None
 
 
-# Leading label/hedge words in a free-text source answer: "Source maybe from Google BigQuery" -> "google bigquery".
+# Leading label/hedge words in a free-text source answer: "Source maybe from Google BigQuery" -> "google bigquery",
+# "product called: Google Search Console" -> "google search console".
 _SOURCE_HEDGE_RE = re.compile(
-    r"^(?:(?:the|our|data|sources?|system|maybe|probably|likely|perhaps|possibly|from|is|are|will be|"
-    r"nguồn|có thể|chắc là|từ|là)\s+|:\s*)+"
+    r"^(?:(?:the|our|a|an|new|data|sources?|system|maybe|probably|likely|perhaps|possibly|from|is|are|will be|"
+    r"it|it's|called|call|named|nguồn|có thể|chắc là|từ|là|tên là|gọi là)(?:\s*:\s*|\s+)"
+    r"|(?:dataset|product|tool|app|platform|service|sản phẩm)\s*(?:called|call|named|tên là|gọi là)?\s*:\s*"
+    r"|(?:dataset|product|tool|app|platform|service|sản phẩm)\s+(?:called|call|named|tên là|gọi là)\s+"
+    r"|:\s*)+"
 )
 
 
@@ -257,8 +262,9 @@ def rule_extract(text: str, asked_fields: list[str] | None, today: date, first_m
     if not free:
         return found
 
-    # Explicit signals in free text
-    if "sources" not in found and (srcs := find_sources(free)):
+    # Explicit signals in free text. Not sources in an answer about where a source comes from
+    # ("exported from our crm") — that would replace the source just named.
+    if "sources" not in found and "source_origin" not in asked_fields and (srcs := find_sources(free)):
         found["sources"] = srcs
     if "refresh_frequency" not in found and (freq := find_frequency(free)):
         found["refresh_frequency"] = freq

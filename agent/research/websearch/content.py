@@ -2,22 +2,21 @@
 
 Ported from web-search-mcp (src/enhanced-content-extractor.ts). Same strategy: HTTP with browser-like
 headers; when that fails in a way a browser can fix (403/429/503, timeout, "enable JavaScript"/captcha
-pages, near-empty content, JavaScript-heavy sites) the page is loaded in headless Chromium. Results are
-fetched concurrently (up to 5 at a time, max 8 s per page), PDFs are skipped. Difference: content
-containing the word "robot" is no longer treated as a bot-detection page (it matched robots.txt docs).
+pages, near-empty content, JavaScript-heavy sites) the page is loaded in headless Chromium. PDFs are skipped.
+Difference: content containing the word "robot" is no longer treated as a bot-detection page (it matched
+robots.txt docs).
 
 Environment: MAX_CONTENT_LENGTH (characters per page, default 500000), DEFAULT_TIMEOUT (ms, default 6000).
 """
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor, wait
 from urllib.parse import urlparse
 
 import requests
 
 from agent.research.websearch import browser
-from agent.research.websearch.extract import html_to_text, preview
-from agent.research.websearch.models import Page, SearchResult, now_iso
+from agent.research.websearch.extract import html_to_text
+from agent.research.websearch.models import Page
 
 log = logging.getLogger(__name__)
 
@@ -97,24 +96,3 @@ def fetch(url: str, timeout: float = DEFAULT_TIMEOUT, max_chars: int = MAX_CONTE
         except Exception as browser_exc:  # noqa: BLE001
             return Page(url=url, fetch_status="error", error=f"{exc}; browser: {browser_exc}", via="browser")
 
-
-def fetch_results(results: list[SearchResult], target: int, timeout: float = DEFAULT_TIMEOUT) -> list[SearchResult]:
-    """Fetch the content of search results concurrently; successful ones first, up to `target`."""
-    todo = [r for r in results if not is_pdf(r.url)][: min(target * 2, 10)]
-    if not todo:
-        return []
-    pool = ThreadPoolExecutor(max_workers=5)
-    try:
-        futures = {pool.submit(fetch, r.url, timeout): r for r in todo}
-        done, _ = wait(futures, timeout=8 + timeout)
-    finally:
-        pool.shutdown(wait=False, cancel_futures=True)  # don't wait for pages that hit the time limit
-    out = []
-    for future, r in futures.items():
-        page = future.result() if future in done else Page(url=r.url, fetch_status="error", error="Content extraction timeout")
-        r.full_content, r.fetch_status, r.error, r.via = page.content, page.fetch_status, page.error, page.via
-        r.content_preview, r.word_count, r.timestamp = preview(page.content), page.word_count, now_iso()
-        out.append(r)
-    ok = [r for r in out if r.fetch_status == "success"]
-    failed = [r for r in out if r.fetch_status != "success"]
-    return (ok + failed)[:target]
