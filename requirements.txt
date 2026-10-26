@@ -10,6 +10,8 @@ gradio>=6.0
 beautifulsoup4>=4.12
 mcp>=2.0
 ddgs>=9.0
+# Main text of web pages (agent/research/websearch/extract.py); the BeautifulSoup rules are the fallback
+trafilatura>=2.0
 # Headless browser for web research. Optional at runtime: it is only used after downloading Chromium once
 # (python -m playwright install chromium; Docker: WITH_BROWSER=true). Without it everything runs over HTTP.
 playwright>=1.50

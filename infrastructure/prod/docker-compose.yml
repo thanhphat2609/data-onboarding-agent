@@ -34,6 +34,22 @@ services:
         max-file: "3"
     restart: unless-stopped
 
+  # Self-hosted metasearch for web research, no API key; only the app reaches it (no published port).
+  searxng:
+    image: searxng/searxng:2026.9.30-a9d990033
+    container_name: data-onboarding-searxng
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?random string for SearXNG}
+      FORCE_OWNERSHIP: "false"
+    volumes:
+      - ../searxng:/etc/searxng:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+
   app:
     build:
       context: ../..
@@ -59,12 +75,15 @@ services:
       TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
       WEB_RESEARCH: ${WEB_RESEARCH:-1}
       WEBSEARCH_BROWSER: ${WEBSEARCH_BROWSER:-auto}
+      SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
       DATABASE_URL: postgresql://agent:${POSTGRES_AGENT_PASSWORD:?}@postgres:5432/onboarding_agent
     volumes:
       - ../../outputs:/app/outputs
     depends_on:
       postgres:
         condition: service_healthy
+      searxng:
+        condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
     init: true

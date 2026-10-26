@@ -1,4 +1,8 @@
-"""Web search without API keys: Bing, then Brave, then DuckDuckGo; the first good-enough result list wins.
+"""Web search without API keys: SearXNG, then Bing, then Brave, then DuckDuckGo; the first good-enough result list wins.
+
+SearXNG (not in web-search-mcp) is a self-hosted metasearch engine, a container in the compose file
+(infrastructure/searxng/). It asks several engines at once, so one engine rate-limiting this network no longer
+means no results. Used when SEARXNG_URL is set; the scrapers below stay as the fallback.
 
 Ported from web-search-mcp (src/search-engine.ts). Same engine order, result parsing (selectors) and
 quality check: results score by query keywords and word pairs found in title/description/URL; a score
@@ -16,7 +20,7 @@ across all engines is used. Differences:
   with a bot challenge, so without a browser this fallback is what finds results.
 
 Environment (same names as the original): ENABLE_RELEVANCE_CHECKING (default true), RELEVANCE_THRESHOLD
-(default 0.3), FORCE_MULTI_ENGINE_SEARCH (default false).
+(default 0.3), FORCE_MULTI_ENGINE_SEARCH (default false). Added: SEARXNG_URL (default empty = no SearXNG).
 """
 import base64
 import logging
@@ -179,6 +183,17 @@ def search_duckduckgo(query: str, num_results: int, timeout: float) -> list[Sear
     return parse_duckduckgo(resp.text, num_results)
 
 
+def search_searxng(query: str, num_results: int, timeout: float) -> list[SearchResult]:
+    """Not in the original: the self-hosted SearXNG's JSON API (results merged from several engines)."""
+    resp = requests.get(f"{os.getenv('SEARXNG_URL', '').rstrip('/')}/search",
+                        params={"q": query, "format": "json", "language": "en"}, timeout=max(timeout, 8.0))
+    resp.raise_for_status()
+    results: list[SearchResult] = []
+    for hit in resp.json().get("results", []):
+        _keep(results, hit.get("title", ""), hit.get("url", ""), hit.get("content", ""), num_results)
+    return results
+
+
 def search_ddgs(query: str, num_results: int, timeout: float) -> list[SearchResult]:
     """Not in the original: the `ddgs` package, which reaches DuckDuckGo through endpoints that still answer
     when html.duckduckgo.com serves its bot challenge (HTTP 202) to plain HTTP clients."""
@@ -192,6 +207,7 @@ def search_ddgs(query: str, num_results: int, timeout: float) -> list[SearchResu
 
 # (name, function, needs the headless browser)
 ENGINES = [
+    ("SearXNG", search_searxng, False),
     ("Bing", search_bing, True),
     ("Brave", search_brave, True),
     ("DuckDuckGo", search_duckduckgo, False),
@@ -227,7 +243,8 @@ def search(query: str, num_results: int = 5, timeout: float = 12.0) -> SearchRes
     def run() -> SearchResponse:
         best, best_engine, best_quality = [], "None", 0.0
         per_engine = min(timeout / 3, 4.0)
-        engines = [(n, f) for n, f, needs_browser in ENGINES if browser.available() or not needs_browser]
+        engines = [(n, f) for n, f, needs_browser in ENGINES
+                   if (browser.available() or not needs_browser) and (n != "SearXNG" or os.getenv("SEARXNG_URL"))]
         for i, (name, engine) in enumerate(engines):
             try:
                 results = engine(query, num_results, per_engine)

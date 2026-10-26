@@ -178,7 +178,8 @@ The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks
 
 [agent/research/websearch/](../agent/research/websearch/) is a Python port of web-search-mcp; its license is in `LICENSE-web-search-mcp`. Each module's docstring lists where it differs from the original. The main differences:
 
-- **Search:** Bing and Brave run only in the optional headless Chromium (Playwright), because over plain HTTP they answer automated clients with generic results or 429. DuckDuckGo runs over HTTP, plus the `ddgs` package as a last fallback. The quality check picks the first good result list.
+- **Search:** first a self-hosted [SearXNG](https://docs.searxng.org/) container (`SEARXNG_URL`, [infrastructure/searxng/settings.yml](../infrastructure/searxng/settings.yml)), which sends each query to several engines at once, so one engine rate-limiting the network no longer means no results. No API key anywhere. Then the original chain as fallback: Bing and Brave run only in the optional headless Chromium (Playwright), because over plain HTTP they answer automated clients with generic results or 429; DuckDuckGo runs over HTTP, plus the `ddgs` package last. The quality check picks the first good result list.
+- **Page text:** [Trafilatura](https://trafilatura.readthedocs.io/) extracts the main text (tables kept, docs navigation dropped); the ported BeautifulSoup rules take over when it finds under 200 characters.
 - **No evasion:** the browser is a normal Chromium profile. The original's fingerprint spoofing and simulated mouse movement were not ported.
 - **Cleanup:** ad and tracking elements are matched on whole class/id words, and words like "terms" or "privacy" are kept in the text (the original removed them).
 - **Speed:** a search with the browser takes several seconds (one short-lived browser per call).
@@ -192,6 +193,7 @@ The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks
 5. **Gaps → follow-up searches:** a topic with no evidence, or history without a number, gets `site:<docs host> "<source>" …` searches in the next round.
 6. **Limits per source:** `RESEARCH_MAX_PAGES` (8), `RESEARCH_ROUNDS` (2), `RESEARCH_TIME_BUDGET_S` (180 s). Round 1 uses about half the pages, so the follow-ups have room.
 7. **Show the work:** every query and its result count are in `findings["searches"]` and in the User Story, with the guessed docs site and any topic still without evidence.
+8. **Top links:** the 5 most relevant links from every search, read or not (requester's links first, then docs site, pages with useful sentences, pages found by more topic searches), each with the topics it was found for. They are in the User Story, the review panel and the Teams summary, so the team has a place to start even when pages can't be read or summarised. With no result at all, a ready-made search link takes their place.
 
 More searches per source means more chances for a key-less engine to rate-limit (see PHASES known issues).
 

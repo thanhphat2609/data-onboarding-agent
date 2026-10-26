@@ -1,0 +1,23 @@
+# SearXNG for the agent's web research (agent/research/websearch/engines.py, search_searxng).
+# Self-hosted metasearch: one query goes to several engines (Google, Bing, DuckDuckGo, Brave, Startpage,
+# Wikipedia…), so one engine rate-limiting us no longer means an empty result. No API key.
+# Only reachable inside the compose network (no published port); the app calls http://searxng:8080.
+use_default_settings: true
+
+general:
+  instance_name: "data-onboarding-agent search"
+
+server:
+  # Overridden by SEARXNG_SECRET (compose). SearXNG refuses to start with the template's "ultrasecretkey".
+  secret_key: "set-by-SEARXNG_SECRET"
+  # The limiter needs Valkey/Redis and protects public instances from bots; this one only serves the app.
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  # json is what the app reads; html keeps the web page usable for debugging.
+  formats:
+    - html
+    - json

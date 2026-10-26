@@ -1,4 +1,8 @@
-"""Main text of an HTML page (ported from web-search-mcp src/enhanced-content-extractor.ts, parseContent).
+"""Main text of an HTML page: Trafilatura first, these rules when it finds too little.
+
+Trafilatura (not in web-search-mcp) is a main-text extractor built for this job; it keeps tables (quotas and
+retention periods are often in one) and is better at dropping docs-site navigation. The rules below are the
+fallback, ported from web-search-mcp (src/enhanced-content-extractor.ts, parseContent).
 
 Same approach: drop non-content tags and page chrome (nav, header, footer, ads, cookie banners…), then take
 the first substantial main-content element (article, main, .content…), else the body. Differences:
@@ -8,9 +12,13 @@ the first substantial main-content element (article, main, .content…), else th
   which wipes exactly the retention/terms facts the agent's research looks for.
 - Line breaks between blocks are kept, so sentences can be found per paragraph.
 """
+import html as html_lib
+import logging
 import re
 
 from bs4 import BeautifulSoup
+
+log = logging.getLogger(__name__)
 
 REMOVE_TAGS = [
     "script", "style", "noscript", "iframe", "img", "video", "audio", "canvas", "svg", "object", "embed", "applet",
@@ -39,6 +47,8 @@ CONTENT_SELECTORS = [
 ]
 _IMAGE_URL_RE = re.compile(r"https?://\S+\.(?:jpe?g|png|gif|webp|svg|ico|bmp|tiff)(?:\?\S*)?", re.I)
 _DATA_URL_RE = re.compile(r"data:image/[^;]+;base64,[A-Za-z0-9+/=]+")
+_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
+MIN_TRAFILATURA_CHARS = 200  # less than this: probably a page Trafilatura doesn't understand; use the rules
 
 
 def _words(value) -> set[str]:
@@ -48,6 +58,20 @@ def _words(value) -> set[str]:
 
 def html_to_text(html: str, max_chars: int = 500_000) -> tuple[str, str]:
     """(title, main text) of an HTML page; text keeps one line per block, whitespace collapsed."""
+    try:
+        import trafilatura
+
+        text = trafilatura.extract(html, include_comments=False, include_tables=True, favor_recall=True) or ""
+    except Exception as exc:  # noqa: BLE001 — not installed or a page it can't parse: use the rules
+        log.debug("Trafilatura failed: %s", exc)
+        text = ""
+    if len(text) >= MIN_TRAFILATURA_CHARS:
+        title = _TITLE_RE.search(html)
+        return (re.sub(r"\s+", " ", html_lib.unescape(title.group(1))).strip() if title else ""), clean_text(text, max_chars)
+    return _rules_to_text(html, max_chars)
+
+
+def _rules_to_text(html: str, max_chars: int) -> tuple[str, str]:
     soup = BeautifulSoup(html, "html.parser")
     title = soup.title.get_text(" ", strip=True) if soup.title else ""
     for tag in soup(REMOVE_TAGS):

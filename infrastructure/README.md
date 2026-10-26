@@ -6,8 +6,9 @@ The web UI runs in Docker, with the same layout as data-onboarding-ingestion: on
 infrastructure/
 ├── Dockerfile              # two stages: requirements into a venv, then slim runtime + agent/ + app.py; port 7860
 ├── postgres/init/          # first-start script: databases onboarding_agent, airflow, platform; one role each
+├── searxng/settings.yml    # self-hosted search engine for web research (JSON on, no limiter), mounted read-only
 ├── non-prod/               # laptop and GitHub Codespaces (this README)
-│   ├── docker-compose.yml  #   app (builds the image, port, settings, outputs/) + postgres
+│   ├── docker-compose.yml  #   app (builds the image, port, settings, outputs/) + postgres + searxng
 │   ├── .env.example        #   settings template; copy to non-prod/.env (gitignored)
 │   └── codespace-network.sh #  Codespaces firewall fix, run on every start by .devcontainer/devcontainer.json
 ├── prod/                   # VM 1 (Agent + Airflow + Flink JobManager): compose, .env.example, deploy.sh; draft until the VM exists (prod/README.md)
@@ -87,6 +88,8 @@ Both survive `down` and rebuilds:
 |---|---|
 | `postgres` container (PostgreSQL 16), volume `pgdata` | Database `onboarding_agent`: sessions (LangGraph checkpoints + the `sessions` table). Databases `airflow` (Airflow's metadata DB) and `platform` (run records) for [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion). Queries and layout: [docs/POSTGRESQL.md](../docs/POSTGRESQL.md) |
 | `outputs/` on the host (bind mount `/app/outputs`) | User stories, feasibility, Teams messages, eval reports |
+
+The `searxng` container keeps nothing: it is the first search engine of the web research (no API key, no published port; the app calls `http://searxng:8080`). If it is down, research falls back to the other engines. Check it with `docker compose -f infrastructure/non-prod/docker-compose.yml exec app python -c "from agent.research import websearch; print(websearch.search('google search console API', 3))"`.
 
 `down -v` deletes the `pgdata` volume, so **every session, Airflow's metadata and the ingestion run records** go with it.
 

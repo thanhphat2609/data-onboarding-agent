@@ -198,6 +198,7 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 | `RESEARCH_ROUNDS` | `2` | Research rounds per source: planned searches, then follow-up searches on the docs site for topics still without evidence |
 | `RESEARCH_TIME_BUDGET_S` | `180` | Seconds of research per source before it stops with what it has |
 | `WEBSEARCH_BROWSER` | `auto` | `off` = never use the headless browser, even when Playwright is installed |
+| `SEARXNG_URL` | empty (compose: `http://searxng:8080`) | Self-hosted SearXNG, the first search engine for web research; empty = only the Bing/Brave/DuckDuckGo scrapers |
 | `RELEVANCE_THRESHOLD`, `ENABLE_RELEVANCE_CHECKING`, `FORCE_MULTI_ENGINE_SEARCH` | `0.3`, `true`, `false` | Search result quality check (same as web-search-mcp) |
 | `MAX_CONTENT_LENGTH`, `DEFAULT_TIMEOUT` | `500000`, `6000` (ms) | Page content limit and fetch timeout |
 

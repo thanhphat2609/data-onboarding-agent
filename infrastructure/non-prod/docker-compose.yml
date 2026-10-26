@@ -45,6 +45,25 @@ services:
     restart: unless-stopped
 
   # ─────────────────────────────────────────────
+  # SearXNG: self-hosted metasearch for web research, no API key (infrastructure/searxng/settings.yml).
+  # No published port: only the app reaches it, as http://searxng:8080.
+  # ─────────────────────────────────────────────
+  searxng:
+    image: searxng/searxng:2026.9.30-a9d990033
+    container_name: data-onboarding-searxng
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-data-onboarding-agent-non-prod}
+      FORCE_OWNERSHIP: "false"   # settings are mounted read-only; don't chown them
+    volumes:
+      - ../searxng:/etc/searxng:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
   # Web UI + agent (Gradio)
   # ─────────────────────────────────────────────
   app:
@@ -77,6 +96,8 @@ services:
       TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
       WEB_RESEARCH: ${WEB_RESEARCH:-1}
       WEBSEARCH_BROWSER: ${WEBSEARCH_BROWSER:-auto}
+      # First search engine; empty = only the key-less scrapers (Bing/Brave/DuckDuckGo)
+      SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
       # Sessions (checkpoints + sessions table) in PostgreSQL. Point DATABASE_URL elsewhere for an external server;
       # a password with special characters must be URL-encoded here.
       DATABASE_URL: ${DATABASE_URL:-postgresql://agent:${POSTGRES_AGENT_PASSWORD:-agent}@postgres:5432/onboarding_agent}
@@ -85,6 +106,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      searxng:
+        condition: service_started   # research falls back to the other engines if it isn't up yet
     # Lets OLLAMA_HOST=http://host.docker.internal:11434 reach Ollama on the host (needed on Linux).
     extra_hosts:
       - "host.docker.internal:host-gateway"
