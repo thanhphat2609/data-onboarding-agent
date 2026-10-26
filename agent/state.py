@@ -59,6 +59,7 @@ class AgentState(TypedDict, total=False):
     gap: list[dict]
     accepted_gaps: list[str]
     research: dict[str, dict]  # source -> web research findings (sources the platform can't onboard yet)
+    draft_approved: bool  # the requester approved the draft (requester_review); then it goes to the Data Team
     approved: bool
     review_comment: str
     outputs: dict[str, Any]

@@ -55,12 +55,14 @@ flowchart TD
     START((start)) --> intake
     intake -- question pending --> ask_user
     ask_user -- "interrupt: wait for requester" --> intake
-    intake -- complete, first time --> notify
-    intake -- complete, already notified --> catalog_check
-    notify --> catalog_check --> feasibility
+    intake -- complete --> catalog_check --> feasibility
     feasibility -- gap --> intake
     feasibility -- no gap --> investigate_source
-    investigate_source --> approval
+    investigate_source --> requester_review
+    requester_review -- "interrupt: requester checks the draft" --> requester_review
+    requester_review -- change --> intake
+    requester_review -- "approve draft, first time" --> notify --> approval
+    requester_review -- "approve draft, already notified" --> approval
     approval -- "interrupt: wait for Data Team" --> approval
     approval -- request changes --> intake
     approval -- approve --> draft_us --> summary --> END((end))
@@ -70,22 +72,24 @@ flowchart TD
 |---|---|---|---|
 | `intake` | [intake.py](../agent/workflow/nodes/intake.py) | Extracts fields from new user messages, validates them (dates, ETA after today, refresh frequency) and decides what to ask next: missing fields (max 3 per turn), "Where does it come from?" on its own right after a source the platform can't onboard yet, or a gap to resolve | `request`, `missing_fields`, `errors`, `gap`, `accepted_gaps`, `pending_question` |
 | `ask_user` | [intake.py](../agent/workflow/nodes/intake.py) | `interrupt()`: pauses the graph until the requester answers | `messages` |
-| `notify` | [notify.py](../agent/workflow/nodes/notify.py) | Once per request: writes `request.json`, posts "New data request" to Teams | `thread_ref` |
+| `notify` | [notify.py](../agent/workflow/nodes/notify.py) | Once per request, after the requester approved the draft: writes `request.json`, posts "New data request" (with the feasibility result) to Teams | `thread_ref` |
 | `catalog_check` | [catalog_check.py](../agent/workflow/nodes/catalog_check.py) | Searches the dbt models of the transformation repo per source system | `existing_models` |
 | `feasibility` | [feasibility.py](../agent/workflow/nodes/feasibility.py) | Per source and table: existing dbt model → landed by an ingestion job → system onboarded (new job) → supported source type (new connection) → otherwise a gap. Flags tight ETAs and snapshot history | `feasibility`, `gap` |
 | `investigate_source` | [investigate.py](../agent/workflow/nodes/investigate.py) | Only for sources the platform can't onboard yet: web research and draft source notes (advisory) | `research` |
+| `requester_review` | [requester_review.py](../agent/workflow/nodes/requester_review.py) | `interrupt()` with the **draft**: the User Story from the template, no LLM (`draft_preview` in draft_us.py), split into the requester's part (User Story, acceptance criteria, description) and technical details. Approve → Data Team; a change goes back to intake and a new draft follows | `draft_approved`, `messages` |
 | `approval` | [approval.py](../agent/workflow/nodes/approval.py) | `interrupt()`: pauses until the Data Team approves or requests changes | `approved`, `review_comment` |
 | `draft_us` | [draft_us.py](../agent/workflow/nodes/draft_us.py) | User Story from a fixed template (LLM only writes title/description); writes `feasibility.json`, `user_story.md` | `outputs` |
 | `summary` | [summary.py](../agent/workflow/nodes/summary.py) | Writes `summary.md`, posts "Request approved — User Story ready" to Teams | `outputs` |
 
 ### Interrupts are the hand-off points
 
-The graph stops in exactly two places, both with LangGraph's `interrupt()`:
+The graph stops in exactly three places, all with LangGraph's `interrupt()`:
 
 - **`ask_user`**: waiting for the **requester**. The UI resumes it with `Command(resume=<answer text>)`.
+- **`requester_review`**: the **requester** checks the draft. **✓ Approve draft** resumes it with `{"action": "approve"}`; a typed change with the text (a yes-word approves). Questions are answered without resuming (followup.py).
 - **`approval`**: waiting for the **Data Team**. The review tab resumes it with `Command(resume={"action": "approve" | "edit", "comment": ...})`.
 
-`AgentRunner.current_event(thread_id)` turns the paused state into an event the UI renders: `question`, `approval`, `done` or `empty` (still running / not started).
+`AgentRunner.current_event(thread_id)` turns the paused state into an event the UI renders: `question`, `draft`, `approval`, `done` or `empty` (still running / not started).
 
 ## State
 
@@ -100,6 +104,7 @@ The graph stops in exactly two places, both with LangGraph's `interrupt()`:
 | `gap`, `accepted_gaps` | Open feasibility gaps (`date_range`, `unknown_source`) and the ones the requester accepted |
 | `existing_models`, `feasibility` | dbt model matches and the per-source assessment with recommendation and risks |
 | `research` | Web research findings per source the platform can't onboard yet |
+| `draft_approved` | The requester approved the draft (then it goes to the Data Team) |
 | `approved`, `review_comment` | The Data Team's decision |
 | `outputs` | Paths of the generated files and the User Story title |
 
@@ -110,7 +115,7 @@ One chat session = one LangGraph `thread_id`. Every step is checkpointed (Postgr
 1. **Decisions live in code; the LLM only helps with language.** Routing, validation and feasibility are deterministic Python. The LLM (if configured) extracts free-text fields, rephrases questions and writes the User Story title and description. If it is missing or fails, the rule-based path takes over (`safe_call`).
 2. **Never guess platform facts.** What is onboarded, landing or modelled comes only from the two repos; every recommendation cites the file it came from.
 3. **Web research is advisory.** Findings for unknown sources go into the User Story and the questions for the Data Team. They never change the feasibility result: the source stays *Needs investigation* until the ingestion repo can onboard it.
-4. **A human approves.** Nothing is drafted until the Data Team approves. A requested change sends the request back through intake and feasibility.
+4. **Humans approve, twice.** The requester approves a **draft** (template only, marked *Draft*) before the Data Team hears about the request; the Data Team then approves it, and only then is the final User Story written (with the LLM wording, if any). A change from either side sends the request back through intake and feasibility, and the requester approves the new draft.
 5. **No sample data.** The agent only knows what the two repos contain. If a repo can't be read, the header pill turns red and every feasibility result carries the error as a risk.
 6. **External calls must not break the flow.** A failing Teams webhook or web page is logged to a file and the flow continues.
 
@@ -142,7 +147,7 @@ The UI keeps no state of its own beyond the current `thread_id`: every panel is 
 
 | Tab | For | What it does |
 |---|---|---|
-| 💬 Request | Requester | Chat with example prompts. A step tracker (Describe → Details → Feasibility → Review → User Story), a live "Your request" card, a read-only "Waiting for Data Team review" panel, and the finished User Story with downloads |
+| 💬 Request | Requester | Chat with example prompts. A step tracker (Describe → Details → Feasibility → Draft → Review → User Story), a live "Your request" card, the **draft** panel (✓ Approve draft, technical details folded), a read-only "Waiting for Data Team review" panel, and the finished User Story with downloads |
 | 🗂 Sessions | Everyone | Reopen a recent session (from the `sessions` table) or one pasted by `thread_id`. Requesters only see and open their own |
 | 🛡 Data Team review | Data Team | Queue of requests waiting for approval; request card + feasibility; **Approve** / **Request changes** |
 | ⚙️ Settings | Data Team | LLM host/model/API key at runtime; what was read from the two repos, reload |

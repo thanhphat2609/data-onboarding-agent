@@ -130,6 +130,14 @@ To make the source known: add a source template, connection or job for it in dat
 - ✅ `agent/` reorganised into `workflow/`, `repos/`, `research/`, `llm/`, `integrations/` (5/5 scenarios passed after the move); `scripts/` dissolved: replay → `agent/workflow/evaluate.py`, Ollama proxy → `notebooks/`, Teams test → `python -m agent.integrations.teams <url>`
 - ⬜ Build the Docker image with `WITH_BROWSER=true`
 
+## Added: requester approves the draft 🟡 (2026-10-26)
+Step 1 of the agreed order (draft approval → 3 User Stories → reopen / linked change request).
+- 🟡 New `requester_review` step after feasibility and web research: the requester sees the **draft** (same template as the User Story, no LLM; User Story, acceptance criteria and description first, technical details folded) and clicks **✓ Approve draft** or types a change (applied at once, new draft) or a question (answered, nothing changes)
+- 🟡 The **"New data request"** Teams card moved to after the draft approval (with the feasibility result), so the team isn't pinged for unconfirmed requests; still once per request
+- 🟡 A Data Team "Request changes" now comes back to the requester as a new draft to approve, then returns to the review queue
+- 🟡 UI: a **Draft** step in the tracker, the draft panel, session status "waiting for the requester to approve the draft"; `evaluate.py` approves drafts by default (`draft:` in a sample to script changes)
+- Checked offline: graph end to end (draft → change → new draft → approve → Teams once → Data Team edit → new draft → approve → done), the UI handlers (approve button, question, "no", change), the Google Search Console path with web research. ⬜ Click through in a browser; ⬜ in Docker with PostgreSQL
+
 ## Removed dead code (2026-10-26)
 - Web search: the Bing engine (generic results for automated clients, even in the headless browser) and the html.duckduckgo.com engine (bot challenge; `ddgs` reaches DuckDuckGo instead), with their parsers and redirect-link decoding; `is_pdf` (left over from the removed search-with-content tool). Search is now SearXNG → Brave (browser) → DuckDuckGo (`ddgs`).
 - `AgentRunner.threads()` (the UI lists sessions from the sessions table) and the unused `sessions.STATUSES` constant.

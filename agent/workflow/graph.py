@@ -1,9 +1,10 @@
 """Build the graph and checkpointer.
 
     intake ⇄ ask_user          (ask until all fields are filled / gaps are resolved)
-    intake → notify → catalog_check → feasibility
+    intake → catalog_check → feasibility
     feasibility ─gap→ intake
-    feasibility → investigate_source → approval ─edit→ intake   (web research only for sources the platform can't onboard yet)
+    feasibility → investigate_source → requester_review ─change→ intake   (web research only for sources the platform can't onboard yet)
+    requester_review ─approve draft→ notify (first time only) → approval ─edit→ intake
     approval ─approve→ draft_us → summary → END
 """
 import sqlite3
@@ -22,6 +23,7 @@ from agent.workflow.nodes import (
     intake,
     investigate_source,
     notify,
+    requester_review,
     summary,
 )
 from agent.state import AgentState
@@ -30,11 +32,18 @@ from agent.state import AgentState
 def route_intake(state: dict) -> str:
     if state.get("pending_question"):
         return "ask_user"
-    return "catalog_check" if state.get("thread_ref") else "notify"
+    return "catalog_check"
 
 
 def route_feasibility(state: dict) -> str:
     return "intake" if state.get("gap") else "investigate_source"
+
+
+def route_requester_review(state: dict) -> str:
+    """The Data Team hears about a request once the requester approved its draft (the Teams card goes out once)."""
+    if not state.get("draft_approved"):
+        return "intake"
+    return "approval" if state.get("thread_ref") else "notify"
 
 
 def route_approval(state: dict) -> str:
@@ -49,17 +58,19 @@ def build_graph(checkpointer=None):
     g.add_node("catalog_check", catalog_check)
     g.add_node("feasibility", feasibility)
     g.add_node("investigate_source", investigate_source)
+    g.add_node("requester_review", requester_review)
     g.add_node("approval", approval)
     g.add_node("draft_us", draft_us)
     g.add_node("summary", summary)
 
     g.add_edge(START, "intake")
-    g.add_conditional_edges("intake", route_intake, ["ask_user", "notify", "catalog_check"])
+    g.add_conditional_edges("intake", route_intake, ["ask_user", "catalog_check"])
     g.add_edge("ask_user", "intake")
-    g.add_edge("notify", "catalog_check")
     g.add_edge("catalog_check", "feasibility")
     g.add_conditional_edges("feasibility", route_feasibility, ["intake", "investigate_source"])
-    g.add_edge("investigate_source", "approval")
+    g.add_edge("investigate_source", "requester_review")
+    g.add_conditional_edges("requester_review", route_requester_review, ["intake", "notify", "approval"])
+    g.add_edge("notify", "approval")
     g.add_conditional_edges("approval", route_approval, ["draft_us", "intake"])
     g.add_edge("draft_us", "summary")
     g.add_edge("summary", END)

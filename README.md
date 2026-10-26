@@ -31,6 +31,7 @@ Detailed plan: see `PLAN.md` (prototype plan).
 | Added: SearXNG + Trafilatura for web research | 🟡 Checked offline; real searches in a codespace pending |
 | Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1 |
 | Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches in a codespace pending |
+| Added: requester approves the draft before the Data Team | 🟡 Checked offline end to end (graph + UI handlers); ⬜ click through in a browser |
 | Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |
 | Next: 3 User Stories per request (spike, ingestion 1:1 append, transformation: staging reload window → int → mart) | ⬜ Planned, see [docs/PHASES.md](docs/PHASES.md#next-phase-3-user-stories-per-request) |
 
@@ -39,13 +40,15 @@ Detailed plan: see `PLAN.md` (prototype plan).
 ## Architecture (short)
 
 ```
-intake ⇄ ask_user ─▶ notify ─▶ catalog_check ─▶ feasibility ──gap──▶ intake
-                                                    │
-                                     investigate_source (sources the platform can't onboard yet)
-                                                    │
-                    approval (Data Team) ──request changes──▶ intake
-                                                    │ approve
-                                           draft_us ─▶ summary ─▶ END
+intake ⇄ ask_user ─▶ catalog_check ─▶ feasibility ──gap──▶ intake
+                                          │
+                       investigate_source (sources the platform can't onboard yet)
+                                          │
+       requester_review (requester checks the draft) ──change──▶ intake
+                                          │ approve draft
+                     notify (Teams, once) ─▶ approval (Data Team) ──request changes──▶ intake
+                                          │ approve
+                                 draft_us ─▶ summary ─▶ END
 ```
 
 Feasibility reads the code of the two platform repos: is the data already a dbt model in [data-onboarding-transformation](https://github.com/thanhphat2609/data-onboarding-transformation), already landing through a job in [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion), from an onboarded system (needs a new job), or from a supported source type (needs a new connection)? Decisions (routing, validation, feasibility) live in code; the optional LLM only helps with language. Web research is advisory. Nothing is drafted before the Data Team approves. Full picture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -71,12 +74,13 @@ data-onboarding-agent/
 │   │   ├── evaluate.py        #   run past requests, compare with expectations + team handling
 │   │   └── nodes/             #   one file per node:
 │   │       ├── intake.py      #     intake + ask_user (incl. "Where does it come from?")
-│   │       ├── notify.py      #     "New data request" Teams card
+│   │       ├── requester_review.py # requester checks the draft (approve or change)
+│   │       ├── notify.py      #     "New data request" Teams card, after the draft is approved
 │   │       ├── catalog_check.py #   related dbt models per source
 │   │       ├── feasibility.py #     per source: dbt model → landed → new job → new connection → gap
 │   │       ├── investigate.py #     web research for sources the platform can't onboard yet
 │   │       ├── approval.py    #     pause for the Data Team
-│   │       ├── draft_us.py    #     User Story
+│   │       ├── draft_us.py    #     User Story (and the draft preview, template only)
 │   │       ├── summary.py     #     final summary + Teams card
 │   │       └── common.py      #     shared helpers (today, output folder)
 │   ├── repos/                 # knowledge from the ingestion + transformation repos (local checkout or GitHub)

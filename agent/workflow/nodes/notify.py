@@ -1,4 +1,4 @@
-"""Notify the Data Team about a new request (sent once per request)."""
+"""Notify the Data Team about a new request once the requester approved its draft (sent once per request)."""
 import json
 
 from agent.integrations import teams
@@ -11,6 +11,9 @@ def notify(state: dict) -> dict:
     request = state["request"]
     out = output_dir(state)
     (out / "request.json").write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
-    text = format_request(request) + "\n\nThe agent is checking the catalog and feasibility, and will update this thread."
+    text = format_request(request) + (
+        f"\n\n**Feasibility:** {state['feasibility']['overall']}. The requester approved the draft; "
+        "it is waiting for Data Team review (🛡 Data Team review tab)."
+    )
     thread_ref = teams.send_message(state["request_id"], "New data request", text)
     return {"thread_ref": thread_ref}
