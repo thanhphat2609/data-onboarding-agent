@@ -22,7 +22,7 @@ flowchart LR
     G -. optional .-> LLM[Ollama LLM<br/>local or Colab tunnel]
     G -. optional .-> SX[SearXNG container<br/>self-hosted metasearch]
     SX --> WEB[Public docs on the web]
-    G -. fallback .-> WEB2[Bing / Brave / DuckDuckGo<br/>key-less scrapers]
+    G -. fallback .-> WEB2[Brave / DuckDuckGo ddgs<br/>key-less fallback]
     WEB2 --> WEB
     G -- webhook or mock file --> T[Teams channel]
 ```
@@ -42,7 +42,7 @@ flowchart LR
 | Repositories | [agent/repos/__init__.py](../agent/repos/__init__.py), [agent/repos/github.py](../agent/repos/github.py), [agent/repos/dbt_project.py](../agent/repos/dbt_project.py) | Read the two repos (local checkout or GitHub) into one cached `Knowledge`: source templates, connections, jobs, dbt models |
 | Knowledge | [agent/repos/lookup.py](../agent/repos/lookup.py) | `lookup_source(system)`, `search_models(query)` (token-overlap score) over the repos |
 | Web research | [agent/research/investigate.py](../agent/research/investigate.py) | For sources the platform can't onboard yet: research in rounds, top 5 links, key passages, draft source notes, questions for the Data Team (see [Web search](#web-search)) |
-| Web search | [agent/research/websearch/](../agent/research/websearch/) | Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): search through the self-hosted SearXNG container first, then the key-less scrapers (Bing → Brave in an optional headless browser, then DuckDuckGo); page text with Trafilatura over HTTP, with a headless-browser fallback; cut down to two tools, `web_search` and `web_fetch`, also served by an MCP server (`python -m agent.research.websearch.mcp_server`) |
+| Web search | [agent/research/websearch/](../agent/research/websearch/) | Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): search through the self-hosted SearXNG container first, then Brave (in an optional headless browser) and DuckDuckGo (`ddgs`); page text with Trafilatura over HTTP, with a headless-browser fallback; cut down to two tools, `web_search` and `web_fetch`, also served by an MCP server (`python -m agent.research.websearch.mcp_server`) |
 | LLM client | [agent/llm/client.py](../agent/llm/client.py), [agent/llm/prompts/](../agent/llm/prompts/) | Optional Ollama client (API key support for the Colab proxy); prompts as Markdown files |
 | Teams | [agent/integrations/teams.py](../agent/integrations/teams.py) | Adaptive Card to a Workflows webhook; without a URL (or on failure) writes `teams_messages.jsonl` |
 | Config | [agent/config.py](../agent/config.py) | Paths and env vars, including which repos and branches to read |
@@ -196,7 +196,7 @@ The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks
 - **Two tools:** `web_search(query, n)` returns title, URL and snippet per result; `web_fetch(url)` returns the main text of one page. Research and the MCP server use only these. The original's search-with-content tool was dropped: search, then fetch what is worth reading.
 - **Rate limit waits:** over 10 searches a minute, a search waits for the next minute instead of failing (the original's error meant "no results" for the rest of a research run).
 
-- **Search:** first a self-hosted [SearXNG](https://docs.searxng.org/) container (`SEARXNG_URL`, [infrastructure/searxng/settings.yml](../infrastructure/searxng/settings.yml)), which sends each query to several engines at once, so one engine rate-limiting the network no longer means no results. No API key anywhere. Then the original chain as fallback: Bing and Brave run only in the optional headless Chromium (Playwright), because over plain HTTP they answer automated clients with generic results or 429; DuckDuckGo runs over HTTP, plus the `ddgs` package last. The quality check picks the first good result list.
+- **Search:** first a self-hosted [SearXNG](https://docs.searxng.org/) container (`SEARXNG_URL`, [infrastructure/searxng/settings.yml](../infrastructure/searxng/settings.yml)), which sends each query to several engines at once, so one engine rate-limiting the network no longer means no results. No API key anywhere. Then the fallback: Brave, only in the optional headless Chromium (Playwright), because over plain HTTP it answers automated clients with 429; then the `ddgs` package for DuckDuckGo. The quality check picks the first good result list. Bing and html.duckduckgo.com were removed on 2026-10-26 (generic results / bot challenge for automated clients).
 - **Page text:** [Trafilatura](https://trafilatura.readthedocs.io/) extracts the main text (tables kept, docs navigation dropped); the ported BeautifulSoup rules take over when it finds under 200 characters.
 - **No evasion:** the browser is a normal Chromium profile. The original's fingerprint spoofing and simulated mouse movement were not ported.
 - **Cleanup:** ad and tracking elements are matched on whole class/id words, and words like "terms" or "privacy" are kept in the text (the original removed them).
