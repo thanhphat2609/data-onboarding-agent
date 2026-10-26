@@ -99,7 +99,7 @@ data-onboarding-agent/
 ├── docs/                      # architecture, how it works, phase status, PostgreSQL queries
 ├── infrastructure/            # Dockerfile, non-prod/ compose (laptop / Codespaces), prod/ (VM 1, draft), postgres/ init, searxng/ settings; see infrastructure/README.md
 ├── .devcontainer/             # Codespaces: runs infrastructure/non-prod/codespace-network.sh on start
-├── .github/workflows/         # ci.yml on every push, deploy.yml run by hand (the approval) once VM 1 exists
+├── .github/workflows/         # ci.yml on every push, deploy.yml run by hand (the approval) once VM 1 exists, delete-merged-branch.yml
 ├── requirements.txt           # dependencies (Chromium for the headless browser is a separate, optional download)
 ├── CLAUDE.md                  # rules for working on this repo (docs updated with every change)
 ├── PLAN.md                    # the original prototype plan

@@ -46,7 +46,7 @@ flowchart LR
 | LLM client | [agent/llm/client.py](../agent/llm/client.py), [agent/llm/prompts/](../agent/llm/prompts/) | Optional Ollama client (API key support for the Colab proxy); prompts as Markdown files |
 | Teams | [agent/integrations/teams.py](../agent/integrations/teams.py) | Adaptive Card to a Workflows webhook; without a URL (or on failure) writes `teams_messages.jsonl` |
 | Config | [agent/config.py](../agent/config.py) | Paths and env vars, including which repos and branches to read |
-| Infrastructure | [infrastructure/](../infrastructure/), [.github/workflows/](../.github/workflows/) | Dockerfile; compose for non-prod (laptop, Codespaces) and prod (VM 1) with three containers (see [Deployment](#deployment)); SearXNG settings; CI on every push and the Deploy workflow |
+| Infrastructure | [infrastructure/](../infrastructure/), [.github/workflows/](../.github/workflows/) | Dockerfile; compose for non-prod (laptop, Codespaces) and prod (VM 1) with three containers (see [Deployment](#deployment)); SearXNG settings; CI on every push, the Deploy workflow, and a workflow that deletes a pull request's branch once it is merged |
 
 ## The graph
 
