@@ -151,17 +151,24 @@ Same two stages as data-onboarding-ingestion ([its ADR-0012](https://github.com/
 - ⬜ When VM 1 exists: GitHub secrets and variables from the prod README, then the first deploy (this repo before data-onboarding-ingestion)
 
 ## Next phase: 3 User Stories per request
-> ⬜ Planned 2026-10-26, not started. Today one User Story is drafted after approval.
+> ⬜ Planned 2026-10-26 with the requester-side decisions below; not started. Today one User Story is drafted after approval.
 
-The two platform repos are separate (ingestion lands the data, transformation models it), so after the Data Team approves, the agent drafts **3 User Stories** instead of one, linked to each other:
+The two platform repos are separate, so after the Data Team approves, the agent drafts **3 User Stories** instead of one, linked to each other and done in order (each blocked by the previous one):
 
 | # | User Story | Repo | Content | Done when |
 |---|---|---|---|---|
-| 1 | **Spike: the dataset** | none (investigation) | Source: what it is, where it comes from, access method, auth, owner. Freshness: how often the source updates, delay, how far back history goes. Strengths: what it does well for this request. Weaknesses: quotas, sampling, missing fields, history limits, risks. Starts from the web research, the requester's "where does it come from?" answer and the draft source notes | The team has a go/no-go and an access route; source notes checked |
-| 2 | **Ingestion** | data-onboarding-ingestion | Source template / connection / job to add (from feasibility), landing table, schedule matching the refresh, backfill from the start date | Raw data lands on schedule from the start date |
-| 3 | **Transformation** | data-onboarding-transformation | dbt models at the requested grain, tests, freshness test, hand-over to the consumers | Model reconciles with the source UI, live by the ETA |
+| 1 | **Spike: the dataset** | none (investigation) | **Source:** what it is, where it comes from, access method, auth, owner. **Freshness:** how often the source updates, and its **update latency** (e.g. data still changes for 2–3 days), which sets the staging reload window in US 3. **Strengths:** what it does well for this request. **Weaknesses:** quotas, sampling, missing fields, history limits, risks. Starts from the web research, the "where does it come from?" answer and the draft source notes | Go/no-go, an access route, the update latency, source notes checked |
+| 2 | **Ingestion** | data-onboarding-ingestion | Lands the source **1:1, append-only**: source template / connection / job to add (from feasibility), landing table, schedule matching the refresh, backfill from the start date. For a change to an existing source (e.g. new columns): update the job and **re-ingest** the history the request needs | Raw data lands on schedule from the start date, with the requested columns |
+| 3 | **Transformation** | data-onboarding-transformation | **Staging first:** a staging macro takes the landed data 1:1 into the staging layer and **reloads a window** (the update latency from US 1, e.g. the last 3 days), since ingestion only appends. Then **int** (transformations at the requested grain) and **mart** (final model with the metadata columns `_dbt_loaded_at`, `_dbt_run_date`), tests and a freshness test. Detail of int/mart to be planned later | Mart reconciles with the source UI, live by the ETA |
 
-Order: 1 → 2 → 3 (each blocked by the previous one). Open points: whether a source the platform already ingests still gets a spike (or a short one), and whether US 2 is skipped when the data already lands (feasibility `landed` / `existing_model`).
+Decided:
+- **Always a spike**, also when the platform already ingests the source: a change such as new columns still needs one (are the columns in the source, how far back), then re-ingestion (US 2) and transformation (US 3).
+- **Staging belongs to transformation**, not ingestion: ingestion only appends 1:1, and late updates are handled by the staging reload window.
+
+Still open:
+- Intake needs to know **new dataset vs. change to an existing one** (which columns), so feasibility doesn't stop at "already landed".
+- Whether US 2 is skipped when nothing changes in ingestion (data already lands with every needed column).
+- The int/mart plan (the transformation side is not the focus yet).
 
 ## Next steps
 
