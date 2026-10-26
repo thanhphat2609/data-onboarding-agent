@@ -97,7 +97,3 @@ class AgentRunner:
 
     def state(self, thread_id: str) -> dict:
         return self.graph.get_state(self._config(thread_id)).values
-
-    def threads(self, limit: int = 30) -> list[str]:
-        """Most recently updated thread_ids first."""
-        return [s["thread_id"] for s in self.sessions.recent(limit=limit)]

@@ -55,7 +55,7 @@ cp infrastructure/non-prod/.env.example infrastructure/non-prod/.env      # Powe
 | `ACCOUNTS` | Web UI logins, `user:password` pairs separated by commas. Usually only the Data Team, e.g. `data.team@gmail.com:<password>`: any other email is a requester and self-registers (its first sign-in sets its password, min. 8 characters). Empty = no login, everyone sees every tab |
 | `DATA_TEAM` | Accounts with full access (🛡 Data Team review, Settings, Debug, every session), comma-separated. Default `data.team@gmail.com`. Other accounts only see Request and their own Sessions |
 | `WEB_RESEARCH` | `0` turns off web research for sources the platform can't onboard yet |
-| `WITH_BROWSER` | `true` builds the image with headless Chromium for web research (Bing/Brave search, JavaScript-only pages); adds ~400 MB. Needs `up -d --build` |
+| `WITH_BROWSER` | `true` builds the image with headless Chromium for web research (Brave search, JavaScript-only pages); adds ~400 MB. Needs `up -d --build` |
 | `UI_PORT` | Host port, default `7860` |
 | `POSTGRES_PASSWORD`, `POSTGRES_AGENT_PASSWORD`, `POSTGRES_AIRFLOW_PASSWORD`, `POSTGRES_PLATFORM_PASSWORD` | Passwords of the `postgres` superuser and the `agent`, `airflow` and `platform` roles (defaults: the role name; the port is localhost-only). Read **only on the first start**, when the `pgdata` volume is empty. Use URL-safe characters. The ingestion repo's `.env` repeats the last two as `AIRFLOW_DB_PASSWORD` / `PLATFORM_DB_PASSWORD` |
 | `POSTGRES_PORT` | Host port of PostgreSQL, default `5432` |

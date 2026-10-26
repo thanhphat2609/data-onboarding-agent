@@ -38,10 +38,6 @@ class FetchError(Exception):
         self.status, self.body, self.browser_may_help = status, body, browser_may_help
 
 
-def is_pdf(url: str) -> bool:
-    return urlparse(url).path.lower().endswith(".pdf")
-
-
 def _low_quality(text: str) -> bool:
     return len(text.strip()) < 100 or any(m in text for m in BLOCK_MARKERS)
 

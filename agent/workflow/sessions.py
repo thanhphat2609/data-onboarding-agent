@@ -14,7 +14,6 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 
-STATUSES = ("empty", "question", "approval", "done")  # = the runner's event types
 
 _COLUMNS = "thread_id, request_id, created_by, requested_by, reviewed_by, review_action, status, sources, description, created_at, updated_at, reviewed_at"
 
@@ -105,7 +104,7 @@ class SessionStore:
         return rows[0] if rows else None
 
     def recent(self, user: str | None = None, status: str | None = None, limit: int = 30) -> list[dict]:
-        """Newest first. `user` = only sessions they requested or typed; `status` = one of STATUSES."""
+        """Newest first. `user` = only sessions they requested or typed; `status` = one of the runner's event types (empty, question, approval, done)."""
         where, params = [], []
         if user is not None:
             where.append("(requested_by = ? OR created_by = ?)")
