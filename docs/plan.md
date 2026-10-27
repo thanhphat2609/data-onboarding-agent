@@ -1,6 +1,6 @@
 # Data Onboarding Agent – Prototype Plan
 
-> **Note (2026-10-23):** the YAML playbooks and the exported dbt catalog in this plan were replaced: the agent now reads the code of [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion) and [data-onboarding-transformation](https://github.com/thanhphat2609/data-onboarding-transformation). Current design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); status: [docs/PHASES.md](docs/PHASES.md).
+> **Note (2026-10-23):** the YAML playbooks and the exported dbt catalog in this plan were replaced: the agent now reads the code of [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion) and [data-onboarding-transformation](https://github.com/thanhphat2609/data-onboarding-transformation). Current design: [docs/architecture.md](architecture.md); status: [docs/phases.md](phases.md).
 
 ## Overview
 
@@ -146,7 +146,7 @@ notes: ""
 
 **Total:** ~3 weeks part-time.
 
-> Actual status of each item: see [docs/PHASES.md](docs/PHASES.md).
+> Actual status of each item: see [docs/phases.md](phases.md).
 
 ---
 

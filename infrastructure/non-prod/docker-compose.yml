@@ -26,7 +26,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ../postgres/init:/docker-entrypoint-initdb.d:ro
-    # Localhost only: psql / DBeaver from the host (docs/POSTGRESQL.md). Airflow joins the network instead.
+    # Localhost only: psql / DBeaver from the host (docs/postgresql.md). Airflow joins the network instead.
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     networks: [default, platform]

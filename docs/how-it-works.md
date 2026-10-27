@@ -191,6 +191,6 @@ The header pill shows which mode is active. Switch it in **⚙️ Settings → L
 4. Approve it in the review tab, then download the User Story in **💬 Request**.
 5. Try the "CRM segments" and "HR on SQL Server" examples to see a new ingestion job and a new connection.
 
-To replay past requests as scripted conversations: `python -m agent.workflow.evaluate <folder>` (see [PHASES.md](PHASES.md#phase-5--teams--demo); template in [prototype_demo/past_requests/](prototype_demo/past_requests/_template.yaml)).
+To replay past requests as scripted conversations: `python -m agent.workflow.evaluate <folder>` (see [phases.md](phases.md#phase-5--teams--demo); template in [prototype_demo/past_requests/](prototype_demo/past_requests/_template.yaml)).
 
 The full team demo, with what each window should show at every step: [prototype_demo/02_happy_path.md](prototype_demo/02_happy_path.md).

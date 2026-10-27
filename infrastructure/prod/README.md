@@ -51,7 +51,7 @@ App settings (written into `.env`; generate passwords with `openssl rand -hex 24
 | `TEAMS_WEBHOOK_URL` | no | The **Prod** channel's workflow URL (Teams → channel → Workflows → *Send webhook alerts to a channel*). Empty = messages written to `outputs/` |
 | `OLLAMA_API_KEY` | no | Only for a model behind the Colab proxy |
 
-The PostgreSQL passwords are read **only on the first start** (empty `pgdata` volume). Changing one later needs `ALTER ROLE <role> PASSWORD '…'` on the server as `postgres` first, then the new secret and a deploy; otherwise the app or Airflow can't connect. Which role is which: [POSTGRESQL.md → Roles and passwords](../../docs/POSTGRESQL.md#roles-and-passwords).
+The PostgreSQL passwords are read **only on the first start** (empty `pgdata` volume). Changing one later needs `ALTER ROLE <role> PASSWORD '…'` on the server as `postgres` first, then the new secret and a deploy; otherwise the app or Airflow can't connect. Which role is which: [postgresql.md → Roles and passwords](../../docs/postgresql.md#roles-and-passwords).
 
 ### Variables (same page → Variables tab → New repository variable)
 

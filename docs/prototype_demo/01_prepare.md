@@ -69,7 +69,7 @@ Run [the happy path](02_happy_path.md) parts A–D once, alone, with a throwaway
   ```
   The dry run shows `status = done`, `review_action = approve`.
 
-Then clean up the dry run so the demo starts from an empty queue (see [POSTGRESQL.md → Clean up test sessions](../POSTGRESQL.md#clean-up-test-sessions)), and let the channel know the next cards are the demo.
+Then clean up the dry run so the demo starts from an empty queue (see [postgresql.md → Clean up test sessions](../postgresql.md#clean-up-test-sessions)), and let the channel know the next cards are the demo.
 
 ## 1.6 Just before the demo
 

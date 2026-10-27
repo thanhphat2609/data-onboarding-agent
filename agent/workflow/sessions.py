@@ -1,7 +1,7 @@
 """Index of chat sessions, one row per thread_id, in the same database as the LangGraph checkpoints.
 
 LangGraph keeps the state as binary blobs, so listing sessions or checking who owns one would mean loading
-every thread. This table holds those facts in plain columns (queries: docs/POSTGRESQL.md). The runner keeps it
+every thread. This table holds those facts in plain columns (queries: docs/postgresql.md). The runner keeps it
 current; the checkpoints stay the source of truth for the state itself.
 
     created_by    login that typed the request (can be a Data Team member)

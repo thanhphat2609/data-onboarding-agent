@@ -2,7 +2,7 @@
 
 An AI agent that turns data requests into ready-to-build work: it gathers requirements from users step by step, checks existing data and source feasibility (availability, date range, ETA), notifies the data team on Teams, and drafts user stories with a pipeline proposal — with human approval at every key step.
 
-Detailed plan: see `PLAN.md` (prototype plan).
+Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
 
 > Everything is in English (UI, questions, User Story, Teams messages, code, docs). The agent still understands answers written in Vietnamese.
 
@@ -10,14 +10,14 @@ Detailed plan: see `PLAN.md` (prototype plan).
 
 ## Docs
 
-- **[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)**: a request from first message to User Story, for requesters and the Data Team
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**: components, the agent graph, state, design rules, storage, deployment
-- **[docs/PHASES.md](docs/PHASES.md)**: status of each phase, known issues, next steps
+- **[docs/how-it-works.md](docs/how-it-works.md)**: a request from first message to User Story, for requesters and the Data Team
+- **[docs/architecture.md](docs/architecture.md)**: components, the agent graph, state, design rules, storage, deployment
+- **[docs/phases.md](docs/phases.md)**: status of each phase, known issues, next steps
 - **[docs/prototype_demo/](docs/prototype_demo/README.md)**: the demo that closes the prototype: prepare, happy-path script, results and the close decision
 
 ## Status
 
-> Updated: 2026-10-27. Details per item: [docs/PHASES.md](docs/PHASES.md).
+> Updated: 2026-10-27. Details per item: [docs/phases.md](docs/phases.md).
 
 | Phase | Status |
 |---|---|
@@ -36,7 +36,7 @@ Detailed plan: see `PLAN.md` (prototype plan).
 | Added: docs links learned from approved requests (`source_docs`) | 🟡 Checked offline end to end: an approved request's links are listed first in the next one, even with no search results |
 | Added: requester approves the draft before the Data Team | 🟡 Checked offline end to end (graph + UI handlers); ⬜ click through in a browser |
 | Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |
-| Added: 3 User Stories per request (spike, ingestion non-prod + prod, transformation non-prod + prod) | 🟡 Drafted after the Data Team approves; checked offline end to end. Open: new dataset vs. change, when to skip ingestion, int/mart detail ([docs/PHASES.md](docs/PHASES.md#3-user-stories-per-request)) |
+| Added: 3 User Stories per request (spike, ingestion non-prod + prod, transformation non-prod + prod) | 🟡 Drafted after the Data Team approves; checked offline end to end. Open: new dataset vs. change, when to skip ingestion, int/mart detail ([docs/phases.md](docs/phases.md#3-user-stories-per-request)) |
 
 ---
 
@@ -54,7 +54,7 @@ intake ⇄ ask_user ─▶ catalog_check ─▶ feasibility ──gap──▶ i
                                  draft_us ─▶ summary ─▶ END
 ```
 
-Feasibility reads the code of the two platform repos: is the data already a dbt model in [data-onboarding-transformation](https://github.com/thanhphat2609/data-onboarding-transformation), already landing through a job in [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion), from an onboarded system (needs a new job), or from a supported source type (needs a new connection)? Decisions (routing, validation, feasibility) live in code; the optional LLM only helps with language. Web research is advisory. Nothing is drafted before the Data Team approves. Full picture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Feasibility reads the code of the two platform repos: is the data already a dbt model in [data-onboarding-transformation](https://github.com/thanhphat2609/data-onboarding-transformation), already landing through a job in [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion), from an onboarded system (needs a new job), or from a supported source type (needs a new connection)? Decisions (routing, validation, feasibility) live in code; the optional LLM only helps with language. Web research is advisory. Nothing is drafted before the Data Team approves. Full picture: [docs/architecture.md](docs/architecture.md).
 
 ## Repo layout
 
@@ -109,7 +109,6 @@ data-onboarding-agent/
 ├── .github/workflows/         # ci.yml on every push, deploy.yml run by hand (the approval) once VM 1 exists, delete-merged-branch.yml
 ├── requirements.txt           # dependencies (Chromium for the headless browser is a separate, optional download)
 ├── CLAUDE.md                  # rules for working on this repo (docs updated with every change)
-├── PLAN.md                    # the original prototype plan
 └── outputs/                   # results per request_id (gitignored)
 ```
 
@@ -144,7 +143,7 @@ docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
 ```
 Then open http://127.0.0.1:7860. In GitHub Codespaces (Docker is preinstalled), open the forwarded port 7860 from the **PORTS** tab instead.
 
-Three containers start: `app` (web UI and agent), `postgres` (sessions, plus the `airflow` and `platform` databases that data-onboarding-ingestion uses on the same host; `platform` is reserved for its run history, see [docs/POSTGRESQL.md](docs/POSTGRESQL.md#roles-and-passwords)) and `searxng` (web search). Prod on VM 1 runs the same three from `infrastructure/prod/`; CI runs on every push and the Deploy workflow is run by hand ([infrastructure/prod/README.md](infrastructure/prod/README.md)).
+Three containers start: `app` (web UI and agent), `postgres` (sessions, plus the `airflow` and `platform` databases that data-onboarding-ingestion uses on the same host; `platform` is reserved for its run history, see [docs/postgresql.md](docs/postgresql.md#roles-and-passwords)) and `searxng` (web search). Prod on VM 1 runs the same three from `infrastructure/prod/`; CI runs on every push and the Deploy workflow is run by hand ([infrastructure/prod/README.md](infrastructure/prod/README.md)).
 
 For settings (`.env` / Codespaces secrets), where data is stored, port visibility and troubleshooting, see [infrastructure/README.md](infrastructure/README.md).
 
@@ -152,7 +151,7 @@ For settings (`.env` / Codespaces secrets), where data is stored, port visibilit
 
 Web research uses two tools from [agent/research/websearch/](agent/research/websearch/), a Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): **`web_search`** (title, URL, snippet per result) and **`web_fetch`** (main text of one page). Search goes to the self-hosted **SearXNG** container first (Docker setups, `SEARXNG_URL`), then to Brave (headless browser) and DuckDuckGo (`ddgs`); no API keys. Pages are read over HTTP with **Trafilatura** for the main text, or in a headless browser when they need JavaScript.
 
-For each source the platform can't onboard yet, research runs in up to 2 rounds (one search per topic, then follow-ups on the docs site for what is still missing) and hands the Data Team the **top 5 links**, key passages, questions and draft source notes. Links from earlier **approved** requests for the same source are learned and always among the links (`source_docs` table), plus a few official docs listed in advance ([docs_hints.yaml](agent/research/docs_hints.yaml)); results that only mention the source in passing are dropped; searches and pages are cached for 7 days, so a second request for the same source gets the same links. All of it is unverified and never changes the feasibility result ([details](docs/ARCHITECTURE.md#web-search)).
+For each source the platform can't onboard yet, research runs in up to 2 rounds (one search per topic, then follow-ups on the docs site for what is still missing) and hands the Data Team the **top 5 links**, key passages, questions and draft source notes. Links from earlier **approved** requests for the same source are learned and always among the links (`source_docs` table), plus a few official docs listed in advance ([docs_hints.yaml](agent/research/docs_hints.yaml)); results that only mention the source in passing are dropped; searches and pages are cached for 7 days, so a second request for the same source gets the same links. All of it is unverified and never changes the feasibility result ([details](docs/architecture.md#web-search)).
 
 - **Headless browser (optional):** `python -m playwright install chromium` once (the Playwright package is in `requirements.txt`). Without it, Brave is skipped (search uses SearXNG, then DuckDuckGo through `ddgs`) and JavaScript-only pages stay unreadable. Docker: `WITH_BROWSER=true`.
 - **MCP server** with the same two tools (`web_search`, `web_fetch`), for LM Studio, Claude Desktop or other MCP clients:
@@ -243,4 +242,4 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 
 ## After the prototype
 
-Roadmap (prod on VM 1, a production model, Teams bot approvals, real tickets, lake metadata, GitHub MCP): see [docs/PHASES.md](docs/PHASES.md#after-the-prototype).
+Roadmap (prod on VM 1, a production model, Teams bot approvals, real tickets, lake metadata, GitHub MCP): see [docs/phases.md](docs/phases.md#after-the-prototype).
