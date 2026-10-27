@@ -19,12 +19,41 @@ postgres 16 (container data-onboarding-postgres, volume pgdata)
     └── checkpoint_migrations  LangGraph: schema version
 ```
 
-Both databases and roles are created by [infrastructure/postgres/init/01-databases.sh](../infrastructure/postgres/init/01-databases.sh) on the first start. The app creates its own tables when it starts.
+All three databases and roles are created by [infrastructure/postgres/init/01-databases.sh](../infrastructure/postgres/init/01-databases.sh) on the first start. The app creates its own tables when it starts.
 
 Why they're kept apart:
 - `airflow db migrate` owns the Airflow schema and changes it on upgrades, so no other tables go in it.
 - A bug in the agent can't touch DAG run history, and Airflow can't touch sessions. Each database can be backed up and restored by itself.
 - The agent never reads Airflow's tables. For job run status it would call the Airflow REST API (`/api/v2/dags/{dag_id}/dagRuns`).
+
+### Roles and passwords
+
+Four login roles, four different passwords (`infrastructure/prod/.env` on VM 1):
+
+| Role | Password | Can reach | Used by | Also in data-onboarding-ingestion's VM 1 `.env` |
+|---|---|---|---|---|
+| `postgres` (superuser) | `POSTGRES_PASSWORD` | Everything | Nobody day to day: the init script on the first start, then you for admin work (`ALTER ROLE … PASSWORD`, a new database, backups, debugging). Required by the `postgres` image | No, stays on VM 1 only |
+| `agent` | `POSTGRES_AGENT_PASSWORD` | `onboarding_agent` | This app (`DATABASE_URL`) | No |
+| `airflow` | `POSTGRES_AIRFLOW_PASSWORD` | `airflow` | Airflow (scheduler, API server) | Yes, same value as `AIRFLOW_DB_PASSWORD` |
+| `platform` | `POSTGRES_PLATFORM_PASSWORD` | `platform` | data-onboarding-ingestion's run history, from its Phase 5. **Empty until then** | Not yet; as `PLATFORM_DB_PASSWORD` once its prod stack uses the run records |
+
+Each role can only reach its own database (`REVOKE ALL … FROM PUBLIC`), so a leaked Airflow password can't read sessions, and the other way round. Use URL-safe characters (`openssl rand -hex 24`): the passwords go into connection URLs.
+
+### Why a `platform` database next to `airflow`
+
+Today only `onboarding_agent` and `airflow` are used. `platform` is reserved for data-onboarding-ingestion's own run records (its architecture §3.4, roadmap Phase 5):
+
+| Table | Content |
+|---|---|
+| `runs` | One row per ingestion run: `ingest_date`, Flink job id, expected vs. written rows, output paths, the resolved job spec, the error |
+| `run_events` | Every state change and diagnostic of a run, append-only |
+
+They feed the run history in ingestion's UI (state, counts, duration, errors, links). They don't go in the `airflow` database because:
+- **Airflow owns that schema.** `airflow db migrate` changes it on upgrades and `airflow db clean` purges old runs: it is operational state, not a record to keep.
+- **Airflow doesn't model what the platform needs:** Flink job ids, row counts, output paths, the resolved spec.
+- **Own role, own password:** the run records survive Airflow upgrades and clean-ups, and Airflow can't change them.
+
+It is created now, empty, because the init script only runs on the **first start** (empty `pgdata` volume). Added later, it would mean creating the role and database by hand as the superuser on the live server. Keeping it costs one generated password.
 
 Airflow (data-onboarding-ingestion) reaches the server over the shared Docker network `data-platform` as `postgres:5432`, database `airflow`, user `airflow`. That needs both stacks on one Docker host, as on the demo VM 1 (Agent + Airflow + Flink JobManager). Decision record on the ingestion side: its ADR-0011.
 

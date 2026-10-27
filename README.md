@@ -142,7 +142,7 @@ docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
 ```
 Then open http://127.0.0.1:7860. In GitHub Codespaces (Docker is preinstalled), open the forwarded port 7860 from the **PORTS** tab instead.
 
-Three containers start: `app` (web UI and agent), `postgres` (sessions, plus the `airflow` and `platform` databases that data-onboarding-ingestion uses on the same host) and `searxng` (web search). Prod on VM 1 runs the same three from `infrastructure/prod/`; CI runs on every push and the Deploy workflow is run by hand ([infrastructure/prod/README.md](infrastructure/prod/README.md)).
+Three containers start: `app` (web UI and agent), `postgres` (sessions, plus the `airflow` and `platform` databases that data-onboarding-ingestion uses on the same host; `platform` is reserved for its run history, see [docs/POSTGRESQL.md](docs/POSTGRESQL.md#roles-and-passwords)) and `searxng` (web search). Prod on VM 1 runs the same three from `infrastructure/prod/`; CI runs on every push and the Deploy workflow is run by hand ([infrastructure/prod/README.md](infrastructure/prod/README.md)).
 
 For settings (`.env` / Codespaces secrets), where data is stored, port visibility and troubleshooting, see [infrastructure/README.md](infrastructure/README.md).
 
