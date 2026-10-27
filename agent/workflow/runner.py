@@ -6,6 +6,7 @@ from datetime import date
 
 from langgraph.types import Command
 
+from agent.research import learned
 from agent.workflow.graph import build_graph, get_checkpointer
 from agent.workflow.sessions import SessionStore
 
@@ -26,6 +27,7 @@ class AgentRunner:
         checkpointer = checkpointer or get_checkpointer(db_path)
         self.graph = build_graph(checkpointer)
         self.sessions = _session_store(checkpointer)
+        learned.use(self.sessions)  # research reads docs links learned from approved requests from the same database
         for thread_id in self.sessions.unindexed():  # sessions saved before the table existed
             self._index(thread_id, backfill=True)
 
@@ -83,6 +85,8 @@ class AgentRunner:
         self._index(thread_id, ev)
         if reviewer and isinstance(answer, dict):
             self.sessions.record_review(thread_id, reviewer, answer.get("action", ""))
+        if ev["type"] == "done":  # approved by the Data Team: its research links are worth keeping
+            learned.learn(self.state(thread_id))
         return ev
 
     def current_event(self, thread_id: str) -> dict:

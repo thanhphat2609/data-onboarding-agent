@@ -8,7 +8,8 @@ current; the checkpoints stay the source of truth for the state itself.
     requested_by  business owner of the request (defaults to created_by)
     reviewed_by   Data Team member who last approved / asked for changes
 
-The same database also holds `requesters`: self-registered web UI logins with their password hash (agent/auth.py).
+The same database also holds `requesters`: self-registered web UI logins with their password hash (agent/auth.py),
+and `source_docs`: docs links learned from approved requests, per source (agent/research/learned.py).
 """
 import sqlite3
 import threading
@@ -40,6 +41,15 @@ def _schema(ts: str) -> list[str]:
             email         TEXT PRIMARY KEY,
             password_hash TEXT NOT NULL,
             created_at    {ts} NOT NULL
+        )""",
+        f"""CREATE TABLE IF NOT EXISTS source_docs (
+            source           TEXT NOT NULL,
+            url              TEXT NOT NULL,
+            title            TEXT NOT NULL DEFAULT '',
+            approved         INTEGER NOT NULL DEFAULT 1,
+            first_request_id TEXT NOT NULL DEFAULT '',
+            last_approved_at {ts} NOT NULL,
+            PRIMARY KEY (source, url)
         )""",
     ]
 
@@ -127,6 +137,24 @@ class SessionStore:
         except Exception:  # noqa: BLE001  no checkpoints table yet (fresh database, in-memory checkpointer)
             return []
         return [r["thread_id"] for r in rows]
+
+    # ---------- docs links learned from approved requests (agent/research/learned.py) ----------
+
+    def learn_source_doc(self, source: str, url: str, title: str, request_id: str) -> None:
+        """Count one more approved request that listed this link for the source."""
+        self._run(
+            """INSERT INTO source_docs (source, url, title, approved, first_request_id, last_approved_at)
+               VALUES (?, ?, ?, 1, ?, ?)
+               ON CONFLICT (source, url) DO UPDATE SET
+                 approved = source_docs.approved + 1, title = excluded.title, last_approved_at = excluded.last_approved_at""",
+            (source, url, title, request_id, self._now()),
+        )
+
+    def source_docs(self, source: str, limit: int = 5) -> list[dict]:
+        return self._run(
+            "SELECT url, title, approved FROM source_docs WHERE source = ? ORDER BY approved DESC, last_approved_at DESC LIMIT ?",
+            (source, limit),
+        )
 
     # ---------- self-registered requesters (agent/auth.py) ----------
 
