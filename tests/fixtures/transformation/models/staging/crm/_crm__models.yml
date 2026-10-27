@@ -1,0 +1,7 @@
+version: 2
+models:
+  - name: stg_crm__customers
+    description: CRM customers, typed, one row per customer per ingest day.
+    columns:
+      - name: customer_id
+      - name: segment_id

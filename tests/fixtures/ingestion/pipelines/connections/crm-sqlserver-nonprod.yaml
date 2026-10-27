@@ -1,0 +1,7 @@
+kind: Connection
+name: crm-sqlserver-nonprod
+template: sqlserver@1
+params:
+  host: sqlserver
+  database: crm
+  password: env://CRM_SQLSERVER_RO_PASSWORD

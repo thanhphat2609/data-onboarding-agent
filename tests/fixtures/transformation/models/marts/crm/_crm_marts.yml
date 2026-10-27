@@ -1,0 +1,10 @@
+version: 2
+models:
+  - name: crm_customers_current
+    description: Current CRM customers with their segment.
+    meta:
+      source: crm
+      grain: one row per customer
+    columns:
+      - name: customer_id
+      - name: segment_name
