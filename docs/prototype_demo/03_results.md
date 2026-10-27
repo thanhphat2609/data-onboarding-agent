@@ -16,7 +16,8 @@ Demo date: ____ · Presenter: ____ · Data Team reviewer: ____ · Mode: rule-bas
 | C | Request changes by the Data Team reaches the requester as a new draft | ☐ pass ☐ fail | |
 | C | No second "New data request" card after the re-approval | ☐ pass ☐ fail | |
 | D | "Request approved — User Story ready" card in Teams | ☐ pass ☐ fail | |
-| D | `outputs/<request_id>/` has the 4 files, no `teams_messages.jsonl` | ☐ pass ☐ fail | |
+| D | `outputs/<request_id>/` has the 7 files (incl. `us_1_spike.md`, `us_2_ingestion.md`, `us_3_transformation.md`), no `teams_messages.jsonl` | ☐ pass ☐ fail | |
+| D | The 3 User Stories match how the Data Team splits the work (spike → ingestion → transformation, non-prod then prod) | ☐ pass ☐ fail | |
 | D | Session in PostgreSQL: `done`, `reviewed_by`, `review_action = approve` | ☐ pass ☐ fail | |
 | E | Clean source name, "Where does it come from?" asked on its own | ☐ pass ☐ fail ☐ skipped | |
 | E | Web research: kept results, top 5 links, marked unverified | ☐ pass ☐ fail ☐ skipped | |
@@ -27,6 +28,9 @@ Demo date: ____ · Presenter: ____ · Data Team reviewer: ____ · Mode: rule-bas
 |---|---|---|
 | Current CRM customers (happy path) | | |
 | Google Search Console (part E) | | |
+| 1/3 Spike (Search Console) | | |
+| 2/3 Ingestion (Search Console) | | |
+| 3/3 Transformation (Search Console) | | |
 
 ## Real past requests
 
@@ -62,4 +66,4 @@ Decision: ☐ close the prototype ☐ not yet, because: ____
 
 1. **Which model to use** on VM 1: rule-based, a GPU host running Ollama, or an approved LLM API.
 2. **VM 1**: GitHub secrets and variables ([infrastructure/prod/README.md](../../infrastructure/prod/README.md)), a prod `.env`, `PROD_DEPLOY_ENABLED=true`, then the first deploy (this repo before data-onboarding-ingestion).
-3. **3 User Stories per request** (spike, ingestion, transformation): [PHASES.md → Next phase](../PHASES.md#next-phase-3-user-stories-per-request).
+3. **3 User Stories per request** (spike, ingestion, transformation): built, open points in [PHASES.md](../PHASES.md#3-user-stories-per-request).

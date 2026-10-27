@@ -78,7 +78,7 @@ flowchart TD
 | `investigate_source` | [investigate.py](../agent/workflow/nodes/investigate.py) | Only for sources the platform can't onboard yet: web research and draft source notes (advisory) | `research` |
 | `requester_review` | [requester_review.py](../agent/workflow/nodes/requester_review.py) | `interrupt()` with the **draft**: the User Story from the template, no LLM (`draft_preview` in draft_us.py), split into the requester's part (User Story, acceptance criteria, description) and technical details. Approve → Data Team; a change goes back to intake and a new draft follows | `draft_approved`, `messages` |
 | `approval` | [approval.py](../agent/workflow/nodes/approval.py) | `interrupt()`: pauses until the Data Team approves or requests changes | `approved`, `review_comment` |
-| `draft_us` | [draft_us.py](../agent/workflow/nodes/draft_us.py) | User Story from a fixed template (LLM only writes title/description); writes `feasibility.json`, `user_story.md` | `outputs` |
+| `draft_us` | [draft_us.py](../agent/workflow/nodes/draft_us.py) | User Story from a fixed template (LLM only writes title/description), plus the **3 User Stories** done in order ([stories.py](../agent/workflow/stories.py), deterministic): 1/3 spike, 2/3 ingestion (non-prod, then prod), 3/3 transformation (staging reload window, int, mart; non-prod, then prod). Writes `feasibility.json`, `user_story.md` (with the 3 stories appended) and `us_1_spike.md`, `us_2_ingestion.md`, `us_3_transformation.md` | `outputs` (`stories`: title + file each) |
 | `summary` | [summary.py](../agent/workflow/nodes/summary.py) | Writes `summary.md`, posts "Request approved — User Story ready" to Teams | `outputs` |
 
 ### Interrupts are the hand-off points
@@ -138,7 +138,7 @@ Feasibility has no history dates to compare: ingestion keeps one snapshot per da
 |---|---|---|
 | Sessions (checkpoints + `sessions` table) | `DATABASE_URL` set: PostgreSQL, database `onboarding_agent` (Docker compose). Otherwise SQLite at `CHECKPOINT_DB`, default `./checkpoints.db` (laptop, Colab) | Layout and queries: [POSTGRESQL.md](POSTGRESQL.md). Sessions from before the table existed get their row on the next start |
 | Airflow metadata, ingestion run records | PostgreSQL, databases `airflow` and `platform` on the same server | Owned by data-onboarding-ingestion (its ADR-0011); the agent never reads them. `platform` stays empty until ingestion's Phase 5 run history; why it exists and which password goes where: [POSTGRESQL.md](POSTGRESQL.md#roles-and-passwords) |
-| Per-request files | `outputs/<request_id>/` | `request.json`, `feasibility.json`, `user_story.md`, `summary.md`, `teams_messages.jsonl`, `source_notes_<source>.yaml` |
+| Per-request files | `outputs/<request_id>/` | `request.json`, `feasibility.json`, `user_story.md`, `us_1_spike.md`, `us_2_ingestion.md`, `us_3_transformation.md`, `summary.md`, `teams_messages.jsonl`, `source_notes_<source>.yaml` |
 | Evaluation runs | `outputs/eval/<timestamp>/` | `report.md`, `mistakes.csv` from `python -m agent.workflow.evaluate <folder>` (past requests: `docs/prototype_demo/past_requests/*.yaml`, not in the image) |
 
 ## Web UI

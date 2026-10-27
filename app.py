@@ -329,7 +329,8 @@ def _reply(ev: dict, values: dict) -> list[dict]:
         )
     elif ev["type"] == "done":
         title = (values.get("outputs") or {}).get("title") or values.get("request_id", "")
-        text = f"✅ Done! **{title}**\n\nUser Story created and the summary was sent to the Data Team. Preview or download it on the right."
+        text = (f"✅ Done! **{title}**\n\nUser Story created, with the 3 User Stories to do in order (spike, ingestion, "
+                "transformation), and the summary was sent to the Data Team. Preview or download it on the right.")
     else:
         return []
     return [{"role": "assistant", "content": text}]
@@ -344,7 +345,7 @@ def _result(values: dict) -> tuple:
         return str(p) if p and p.exists() else None
 
     us, summary = path("user_story"), path("summary")
-    title = f"### ✅ {_esc(outputs.get('title') or values.get('request_id', ''))}\nUser Story created and the summary was sent to the Data Team."
+    title = f"### ✅ {_esc(outputs.get('title') or values.get('request_id', ''))}\nUser Story and the 3 User Stories (spike, ingestion, transformation) created; the summary was sent to the Data Team."
     preview = Path(us).read_text(encoding="utf-8") if us else ""
     return title, preview, gr.update(value=us, visible=bool(us)), gr.update(value=summary, visible=bool(summary))
 

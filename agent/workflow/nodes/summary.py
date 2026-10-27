@@ -33,7 +33,9 @@ def summary(state: dict) -> dict:
             "",
             f"**Risks:** {len(feas.get('risks') or [])}",
             *_questions(current_research(state)),
-            f"**User Story:** {outputs.get('user_story', '')}",
+            "**User Stories** (in order):",
+            *[f"{i}. {s['title']} — {s['file']}" for i, s in enumerate(outputs.get("stories") or [], 1)],
+            f"**Main User Story:** {outputs.get('user_story', '')}",
         ]
     )
     out = output_dir(state)

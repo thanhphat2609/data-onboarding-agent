@@ -144,7 +144,17 @@ Only Data Team accounts (`DATA_TEAM`) see the review tab. Requesters sign in wit
 
 The agent fills a fixed template: title, user story, description, sources and feasibility, proposed pipeline per source, acceptance criteria, risks, information sources, and (for unknown sources) web research plus questions for the Data Team. With an LLM, the title and description read better. Everything else is deterministic and cites the file in the ingestion or transformation repo it came from.
 
-Then it writes `summary.md` and posts **"Request approved — User Story ready"** to Teams. The requester gets **⬇ User Story** / **⬇ Summary** downloads and a preview.
+Then the work itself, as **3 User Stories done in order** (each blocked by the one before), one file each to copy into the backlog and all three appended to `user_story.md`:
+
+| # | User Story | Repo | Content |
+|---|---|---|---|
+| 1/3 | **Spike** | none | What is known (recommendation, origin, top links, draft source notes) and what to find out: source and access, freshness and **update latency**, history back to the start date, grain and fields, strengths, weaknesses. Done when there is a go/no-go, an access route and the update latency |
+| 2/3 | **Ingestion** | data-onboarding-ingestion | Per source, from the feasibility result: a source template, a connection, a job, or nothing new (data already lands; re-ingest only if columns are missing). Lands 1:1, append-only. **Non-prod** (codespace, run by hand) then **prod** (pull request to `pipelines/`, a new secret in GitHub + Deploy, backfill) |
+| 3/3 | **Transformation** | data-onboarding-transformation | **Staging** reloading the last N days (N = update latency from 1/3, since ingestion only appends), **int** at the requested grain, **mart** with `_dbt_loaded_at` / `_dbt_run_date`; or reuse the existing dbt model. Tests and a freshness test. **Non-prod** (`dbt build`, reconcile) then **prod** |
+
+The spike is always there, also when the data exists: a change such as new columns needs one too.
+
+Then it writes `summary.md` and posts **"Request approved — User Story ready"** to Teams, with the 3 User Stories listed in order. The requester gets **⬇ User Story** (all of it, including the 3 stories) / **⬇ Summary** downloads and a preview.
 
 ## What gets written
 
@@ -154,7 +164,10 @@ outputs/REQ-20261023-d92104/
 ├── teams_messages.jsonl      # only if Teams is mocked or the webhook failed
 ├── source_notes_<src>.yaml   # only for sources the platform can't onboard yet (step 3b)
 ├── feasibility.json          # after the Data Team approves (step 6)
-├── user_story.md             # step 6
+├── user_story.md             # step 6: the request's User Story + the 3 User Stories
+├── us_1_spike.md             # step 6
+├── us_2_ingestion.md         # step 6
+├── us_3_transformation.md    # step 6
 └── summary.md                # step 6
 ```
 
