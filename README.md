@@ -61,11 +61,12 @@ Feasibility reads the code of the two platform repos: is the data already a dbt 
 
 ```
 data-onboarding-agent/
-├── app.py                     # Web UI (Gradio)
+├── app.py                     # starts the web UI (python app.py [--share] [--host] [--port])
 ├── notebooks/
 │   ├── prototype.ipynb        # Colab: clone, Ollama, tool-calling test, host model via tunnel
 │   └── ollama_auth_proxy.py   # API-key proxy in front of Ollama (run by the notebook on Colab)
 ├── agent/
+│   ├── ui/                    # Gradio web UI: views.py (HTML), handlers.py (events + the AgentRunner), style.py, layout.py
 │   ├── config.py              # paths + env vars
 │   ├── state.py               # TypedDict state + request schema (7 fields + source_origin)
 │   ├── auth.py                # login: Data Team accounts, requester self-registration (scrypt hashes)
