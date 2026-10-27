@@ -26,6 +26,8 @@ PostgreSQL is not recreated by a deploy unless its settings change. Deploy this 
 
 **Every prod setting lives here**, nothing is edited on the VM: the Deploy workflow writes `infrastructure/prod/.env` on VM 1 on every run, one line per key of [.env.example](.env.example), from the secret or variable of the **same name** ([render_env.py](render_env.py)). It stops before touching the VM when a required secret is missing, when a password-like setting was saved as a variable, or when `docker compose config` rejects the result. To change a setting: edit it here, then run **Actions → Deploy**.
 
+A setting you can't fill in yet: set it to **`TODO`** (secret or variable). The deploy stops while any secret or variable of this repository is still `TODO`, naming each one, so a placeholder never reaches the VM. Don't use another placeholder such as `1`: it would be deployed as a real value.
+
 Secrets and variables are per repository: set them here **and** in data-onboarding-ingestion. Both repositories can use the same SSH key and deploy user. One value is shared: this repository's `POSTGRES_AIRFLOW_PASSWORD` secret = ingestion's `AIRFLOW_DB_PASSWORD` secret.
 
 ### Secrets (Settings → Secrets and variables → Actions → New repository secret)

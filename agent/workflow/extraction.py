@@ -37,6 +37,25 @@ LABEL_LINE_RE = re.compile(r"^\s*[-*•]?\s*(?P<label>[^:=\n]{1,40}?)\s*[:=]\s*(
 NUMBERED_LINE_RE = re.compile(r"^\s*(?P<n>\d+)\s*[.)]\s*(?P<value>.+)$")
 
 
+# Openings that aren't part of the dataset description: "Hi, I want to onboard…" -> "Onboard…".
+_LEAD_IN_RES = [
+    re.compile(r"^(?:(?:hi|hello|hey|good\s+(?:morning|afternoon|evening))(?:\s+(?:data\s+)?(?:team|all|everyone|there))?"
+               r"|dear\s+[^,.!]{0,30}|xin\s+chào|chào(?:\s+(?:bạn|anh|chị|team|các\s+bạn))?)\b[\s,.!:-]*", re.I),
+    re.compile(r"^(?:please|pls|can\s+you|could\s+you|would\s+you)\b[\s,]*", re.I),
+    re.compile(r"^(?:i|we)\s+(?:want|would\s+like|'d\s+like|wish)\s+to\b\s*", re.I),
+]
+
+
+def clean_description(text: str) -> str:
+    """The dataset description without a greeting or a polite lead-in, first letter capitalized."""
+    s = text.strip()
+    for _ in range(3):  # "Hi, please, I want to …": each lead-in once, in any order
+        for rx in _LEAD_IN_RES:
+            s = rx.sub("", s, count=1).strip()
+    s = s or text.strip()
+    return s[:1].upper() + s[1:]
+
+
 def norm(text: str) -> str:
     return unicodedata.normalize("NFC", text).strip().lower()
 
@@ -223,6 +242,8 @@ def parse_field(field: str, value: str, today: date):
         return d.isoformat() if d else None
     if field == "refresh_frequency":
         return find_frequency(value)
+    if field == "dataset_description":
+        return clean_description(value)
     return value
 
 
@@ -241,7 +262,9 @@ def rule_extract(text: str, asked_fields: list[str] | None, today: date, first_m
     unlabeled_lines = []
 
     for line in text.splitlines():
-        m = LABEL_LINE_RE.match(line)
+        # "3. Grain: date x campaign": a numbered answer that carries its own label counts as that label.
+        numbered = NUMBERED_LINE_RE.match(line)
+        m = LABEL_LINE_RE.match(numbered.group("value") if numbered else line)
         field = _label_to_field(m.group("label")) if m else None
         if field:
             val = parse_field(field, m.group("value"), today)
@@ -291,7 +314,7 @@ def rule_extract(text: str, asked_fields: list[str] | None, today: date, first_m
         if val:
             found[pending[0]] = val
     elif first_message and "dataset_description" not in found:
-        found["dataset_description"] = free.strip()
+        found["dataset_description"] = clean_description(free)
     return found
 
 
