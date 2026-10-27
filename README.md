@@ -13,10 +13,11 @@ Detailed plan: see `PLAN.md` (prototype plan).
 - **[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)**: a request from first message to User Story, for requesters and the Data Team
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**: components, the agent graph, state, design rules, storage, deployment
 - **[docs/PHASES.md](docs/PHASES.md)**: status of each phase, known issues, next steps
+- **[docs/prototype_demo/](docs/prototype_demo/README.md)**: the demo that closes the prototype: prepare, happy-path script, results and the close decision
 
 ## Status
 
-> Updated: 2026-10-26. Details per item: [docs/PHASES.md](docs/PHASES.md).
+> Updated: 2026-10-27. Details per item: [docs/PHASES.md](docs/PHASES.md).
 
 | Phase | Status |
 |---|---|
@@ -25,7 +26,7 @@ Detailed plan: see `PLAN.md` (prototype plan).
 | 2 – Knowledge | ✅ Read from the real ingestion and transformation repos (no demo data) |
 | 3 – Feasibility | ✅ |
 | 4 – Approval + Output | ✅ Approval by the Data Team in the review tab |
-| 5 – Teams + Demo | 🟡 Mock works; real webhook, real requests and demo pending |
+| 5 – Teams + Demo | 🟡 Mock works; real webhook, real requests and demo pending. Demo script ready: [docs/prototype_demo/](docs/prototype_demo/README.md) |
 | Added: web research, UI redesign, repo knowledge | ✅ |
 | Added: Docker/Codespaces, PostgreSQL sessions, login with roles | 🟡 Runs in Codespaces (v0.7.0); a full request + approval in Docker still to check |
 | Added: SearXNG + Trafilatura for web research | 🟡 Checked offline; real searches in a codespace pending |
@@ -100,14 +101,13 @@ data-onboarding-agent/
 │   │       └── mcp_server.py  #     the two tools as an MCP server
 │   ├── llm/                   # optional Ollama client (client.py) + prompts/
 │   └── integrations/teams.py  # Teams webhook (or mock); `python -m agent.integrations.teams <url>` sends a test card
-├── docs/                      # architecture, how it works, phase status, PostgreSQL queries
+├── docs/                      # architecture, how it works, phase status, PostgreSQL queries, prototype_demo/ (demo script)
 ├── infrastructure/            # Dockerfile, non-prod/ compose (laptop / Codespaces), prod/ (VM 1, draft), postgres/ init, searxng/ settings; see infrastructure/README.md
 ├── .devcontainer/             # Codespaces: runs infrastructure/non-prod/codespace-network.sh on start
 ├── .github/workflows/         # ci.yml on every push, deploy.yml run by hand (the approval) once VM 1 exists, delete-merged-branch.yml
 ├── requirements.txt           # dependencies (Chromium for the headless browser is a separate, optional download)
 ├── CLAUDE.md                  # rules for working on this repo (docs updated with every change)
 ├── PLAN.md                    # the original prototype plan
-├── DEMO.md                    # team demo runbook
 └── outputs/                   # results per request_id (gitignored)
 ```
 
