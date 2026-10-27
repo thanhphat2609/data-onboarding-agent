@@ -167,7 +167,7 @@ While a request waits for review, the Request tab polls every 5 seconds (`gr.Tim
 | Docker (laptop / VM) | `docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build` | Same; host Ollama via `host.docker.internal` |
 | GitHub Codespaces | Same compose command (Docker is preinstalled) | Colab via tunnel |
 | Colab only | Notebook option B: app with `share=True` on Colab | Ollama on the Colab GPU |
-| Prod, VM 1 (draft until the VM exists) | `infrastructure/prod/docker-compose.yml`, deployed by the Deploy workflow, which someone runs by hand after CI is green ([infrastructure/prod/README.md](../infrastructure/prod/README.md)) | Ollama/vLLM on a GPU VM or an approved LLM API |
+| Prod, VM 1 (draft until the VM exists) | `infrastructure/prod/docker-compose.yml`, deployed by the Deploy workflow, which someone runs by hand after CI is green. Every prod setting is a GitHub secret or variable: the workflow writes `.env` on the VM from them on each run ([infrastructure/prod/README.md](../infrastructure/prod/README.md)) | Ollama/vLLM on a GPU VM or an approved LLM API |
 
 The Docker setups run three containers:
 

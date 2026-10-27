@@ -28,11 +28,11 @@ Why they're kept apart:
 
 ### Roles and passwords
 
-Four login roles, four different passwords (`infrastructure/prod/.env` on VM 1):
+Four login roles, four different passwords. In prod each is a GitHub secret of this repository, written into `infrastructure/prod/.env` on VM 1 by the Deploy workflow ([infrastructure/prod/README.md](../infrastructure/prod/README.md#github-setup-settings-of-this-repository)):
 
-| Role | Password | Can reach | Used by | Also in data-onboarding-ingestion's VM 1 `.env` |
+| Role | Password | Can reach | Used by | Same value also in data-onboarding-ingestion's GitHub secrets |
 |---|---|---|---|---|
-| `postgres` (superuser) | `POSTGRES_PASSWORD` | Everything | Nobody day to day: the init script on the first start, then you for admin work (`ALTER ROLE … PASSWORD`, a new database, backups, debugging). Required by the `postgres` image | No, stays on VM 1 only |
+| `postgres` (superuser) | `POSTGRES_PASSWORD` | Everything | Nobody day to day: the init script on the first start, then you for admin work (`ALTER ROLE … PASSWORD`, a new database, backups, debugging). Required by the `postgres` image | No |
 | `agent` | `POSTGRES_AGENT_PASSWORD` | `onboarding_agent` | This app (`DATABASE_URL`) | No |
 | `airflow` | `POSTGRES_AIRFLOW_PASSWORD` | `airflow` | Airflow (scheduler, API server) | Yes, same value as `AIRFLOW_DB_PASSWORD` |
 | `platform` | `POSTGRES_PLATFORM_PASSWORD` | `platform` | data-onboarding-ingestion's run history, from its Phase 5. **Empty until then** | Not yet; as `PLATFORM_DB_PASSWORD` once its prod stack uses the run records |
