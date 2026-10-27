@@ -2,7 +2,7 @@
 
 Status of each phase of the prototype plan ([PLAN.md](../PLAN.md)) plus the work added after it.
 
-> Updated: 2026-10-26. ✅ done and verified · 🟡 code exists, not yet run/verified in the real environment · ⬜ not started
+> Updated: 2026-10-27. ✅ done and verified · 🟡 code exists, not yet run/verified in the real environment · ⬜ not started
 
 ## Overview
 
@@ -58,7 +58,8 @@ Status of each phase of the prototype plan ([PLAN.md](../PLAN.md)) plus the work
 - 🟡 Teams Workflows webhook (notify + summary, Adaptive Card): code exists, **not tested with a real webhook**. Check a URL with `python -m agent.integrations.teams "<url>"`. Without `TEAMS_WEBHOOK_URL` it mocks by writing `outputs/<request_id>/teams_messages.jsonl`. If the webhook call fails, the flow continues and the message goes to the same file with `webhook_error`
 - 🟡 Replay tool for past requests: `python -m agent.workflow.evaluate <folder>` ([evaluate.py](../agent/workflow/evaluate.py)). The 5 scripted scenarios used during development (2026-10-23) were removed from the repo. ⬜ Add 3–5 real past requests
 - ✅ Comparison tooling: a `team_handling` block in a sample (how the team actually handled it) is compared with the agent's result. Every run writes `outputs/eval/<timestamp>/report.md` (with a reviewer rating column) and `mistakes.csv` (one row per difference, with a `reviewer_notes` column). ⬜ Run it on real requests and review
-- 🟡 Demo runbook: [DEMO.md](../DEMO.md). ⬜ Demo to the team
+- 🟡 Demo runbook: [docs/prototype_demo/](prototype_demo/README.md). ⬜ Demo to the team
+- 🟡 2026-10-27: **demo script to close the prototype** in [prototype_demo/](prototype_demo/README.md), replacing `DEMO.md`: [01_prepare.md](prototype_demo/01_prepare.md) (Teams webhook, `.env`, stack up, knowledge check, dry run, fallbacks), [02_happy_path.md](prototype_demo/02_happy_path.md) ("Current CRM customers" from first message to approved User Story in 4 parts: details in ≤ 5 turns, requester draft + change + approve, Data Team request changes + re-approve + approve, User Story + Teams cards + PostgreSQL row; optional Google Search Console part for gap + web research), [03_results.md](prototype_demo/03_results.md) (checklist, team rating, past-request run, close decision) and [past_requests/_template.yaml](prototype_demo/past_requests/_template.yaml) (dates quoted: unquoted YAML dates break `today`). Written from the code and the docs, not yet run (the platform repos couldn't be read from this session). ⬜ Dry run in Docker; ⬜ the demo; ⬜ 3–5 real past requests
 
 ---
 
@@ -196,7 +197,7 @@ Still open:
 3. As the platform grows (more templates, connections, jobs, dbt models), replay a few requests with `python -m agent.workflow.evaluate <folder>` to check the recommendations.
 4. Write 3–5 real past requests as YAML (including `team_handling`), run `python -m agent.workflow.evaluate <folder>`, review `report.md` / `mistakes.csv`.
 5. Hook up the real Teams webhook (`python -m agent.integrations.teams <url>` first).
-6. Set `ACCOUNTS` (the Data Team account; requesters self-register) and demo to the team following [DEMO.md](../DEMO.md): one person as requester, one as the Data Team.
+6. Set `ACCOUNTS` (the Data Team account; requesters self-register) and demo to the team following [prototype_demo/](prototype_demo/README.md): one person as requester, one as the Data Team. Close the prototype with [03_results.md](prototype_demo/03_results.md).
 
 ## After the prototype
 From [PLAN.md](../PLAN.md):

@@ -1,0 +1,30 @@
+# Copy to e.g. 01_<short_name>.yaml and fill in from a request the Data Team already handled.
+# Files starting with "_" are skipped. How to run: docs/prototype_demo/03_results.md#real-past-requests
+# Quote dates ("2026-10-27"): unquoted, YAML reads them as dates instead of text.
+name: Current CRM customers for the sales dashboard
+today: "2026-10-27"                   # the date the request came in (relative dates and "now" are computed from it)
+initial_message: >
+  The sales team needs the current list of CRM customers with their segment for a weekly dashboard.
+answers:                              # the requester's replies, in order (labelled lines work for any question)
+  - |
+    date range: 2024-01-01 to now
+    eta: 2026-11-30
+    grain: one row per customer
+  - "used by: Sales team, Power BI weekly dashboard"
+draft:                                # the requester's answers to the draft
+  - {action: approve}
+approval:                             # the Data Team's decisions, e.g. {action: edit, comment: "change eta to 2026-12-15"}
+  - {action: approve}
+expected:                             # what the agent should do
+  max_turns: 5
+  gap_types: []                       # e.g. [date_range] or [unknown_source]
+  data_already_available: true
+  recommendation:
+    crm: crm_customers_current
+team_handling:                        # how the Data Team actually handled it (compared with the agent's result)
+  data_already_available: true
+  recommendation:
+    crm: crm_customers_current
+  eta: "2026-11-30"                  # quoted: compared as text
+  notes: >
+    Reused the existing model; no ingestion needed.
