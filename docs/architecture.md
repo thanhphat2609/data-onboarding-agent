@@ -187,12 +187,15 @@ The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks
 
 | Folder | Contains |
 |---|---|
+| `app.py` | Only the command line; starts the UI from `agent/ui/` |
 | `agent/` | `config.py` (settings) and `state.py` (request schema, graph state), used everywhere; `auth.py` (login and roles) |
-| `agent/workflow/` | The LangGraph flow: `graph.py`, `runner.py`, `sessions.py` (sessions table), `extraction.py`, `followup.py` (messages while waiting for the Data Team), `evaluate.py` (replay past requests) and `nodes/` (one module per step) |
+| `agent/ui/` | The Gradio web UI: `views.py` (HTML pieces), `handlers.py` (event handlers + the shared `AgentRunner`), `style.py` (theme, CSS), `layout.py` (tabs, wiring, `launch()`) |
+| `agent/workflow/` | The LangGraph flow: `graph.py`, `runner.py`, `sessions.py` (sessions table), `extraction.py`, `followup.py` (messages while waiting for the Data Team), `evaluate.py` (replay past requests), `stories.py` (the 3 User Stories) and `nodes/` (one module per step) |
 | `agent/repos/` | Knowledge from the two platform repos: loading, GitHub access, dbt parsing, lookups |
-| `agent/research/` | Web research for sources the platform can't onboard yet (`investigate.py`), and the `websearch/` port with its two tools: `web_search` (`engines.py`) and `web_fetch` (`content.py`, `extract.py`), plus `browser.py`, `ratelimit.py`, `models.py` and `mcp_server.py` |
+| `agent/research/` | Web research for sources the platform can't onboard yet (`investigate.py`, with `cache.py`, `learned.py` and the optional `docs_hints.yaml`), and the `websearch/` port with its two tools: `web_search` (`engines.py`) and `web_fetch` (`content.py`, `extract.py`), plus `browser.py`, `ratelimit.py`, `models.py` and `mcp_server.py` |
 | `agent/llm/` | Optional Ollama client and its prompts |
 | `agent/integrations/` | Teams webhook |
+| `tests/` | `pytest`, offline, run by CI ([tests/README.md](../tests/README.md)): intake, whole requests through the graph against `tests/fixtures/` (small copies of the two platform repos), the outputs, web research with a fake engine, `render_env.py`, the UI. Not in the Docker image |
 
 ## Web search
 

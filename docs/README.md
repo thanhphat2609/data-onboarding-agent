@@ -15,7 +15,9 @@ Other docs in the repo:
 | [../README.md](../README.md) | Quick start, configuration (env vars), Colab model hosting, which repos the agent reads |
 | [plan.md](plan.md) | The original prototype plan: goals, phases, success criteria, out of scope |
 | [../infrastructure/README.md](../infrastructure/README.md) | Running the app with Docker: laptop, VM, GitHub Codespaces |
+| [../infrastructure/prod/README.md](../infrastructure/prod/README.md) | Prod on VM 1: every GitHub secret and variable, the Deploy workflow, VM setup |
+| [../tests/README.md](../tests/README.md) | The tests (`python -m pytest -q tests`) and the small copies of the platform repos they read |
 | [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion) | Source templates, connections and jobs the agent reads |
 | [data-onboarding-transformation](https://github.com/thanhphat2609/data-onboarding-transformation) | dbt models the agent reads |
 
-Keep these docs current: when a phase item changes status, update [phases.md](phases.md). When a node, the state or the UI flow changes, update [architecture.md](architecture.md) and [how-it-works.md](how-it-works.md).
+Keep these docs current: when a phase item changes status, update [phases.md](phases.md). When a node, the state or the UI flow changes, update [architecture.md](architecture.md) and [how-it-works.md](how-it-works.md). Every change also adds or updates a test in `tests/`.
