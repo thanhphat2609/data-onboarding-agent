@@ -8,7 +8,7 @@ The Data Onboarding Agent is a **LangGraph state machine** with a **Gradio web U
 flowchart LR
     R([Requester]) -- chat --> UI
     DT([Data Team]) -- review tab --> UI
-    subgraph App["Web app (app.py, Gradio)"]
+    subgraph App["Web app (agent/ui, Gradio)"]
         UI[Tabs: Request · Sessions · Data Team review · Settings · Debug]
         RUN[AgentRunner<br/>agent/workflow/runner.py]
         G[LangGraph graph<br/>agent/workflow/graph.py + agent/workflow/nodes/]
@@ -31,7 +31,7 @@ flowchart LR
 
 | Component | Files | Role |
 |---|---|---|
-| Web UI | [app.py](../app.py) | Gradio app. Shows the chat, step tracker, request card and results. Holds the Data Team review queue. Also has settings for the LLM and the repositories the agent reads |
+| Web UI | [agent/ui/](../agent/ui/), started by [app.py](../app.py) | Gradio app. Shows the chat, step tracker, request card and results. Holds the Data Team review queue. Also has settings for the LLM and the repositories the agent reads |
 | Runner | [agent/workflow/runner.py](../agent/workflow/runner.py) | Thin API over the graph: `new_request`, `stream`, `reply`, `current_event`, `state`, `threads`. Keeps the sessions table current after every run. Used by the UI and the scripts |
 | Sessions | [agent/workflow/sessions.py](../agent/workflow/sessions.py) | `SessionStore`: one row per thread_id (owner, who typed it, status, reviewer) in the checkpointer's database, so lists and ownership checks are plain SQL |
 | Graph | [agent/workflow/graph.py](../agent/workflow/graph.py) | Wires the nodes and routing functions; compiles with the PostgreSQL checkpointer (`DATABASE_URL`) or SQLite |
@@ -143,7 +143,7 @@ Feasibility has no history dates to compare: ingestion keeps one snapshot per da
 
 ## Web UI
 
-The UI keeps no state of its own beyond the current `thread_id`: every panel is re-rendered from the graph state (`_view` in [app.py](../app.py)).
+The UI keeps no state of its own beyond the current `thread_id`: every panel is re-rendered from the graph state (`_view` in [agent/ui/handlers.py](../agent/ui/handlers.py)).
 
 | Tab | For | What it does |
 |---|---|---|
@@ -227,7 +227,7 @@ More searches per source means more chances for a key-less engine to rate-limit 
 | To… | Change |
 |---|---|
 | Support a new source | In data-onboarding-ingestion: a source template (new type), a connection (new system) or a job (new table); the agent picks it up on reload |
-| Add a required field | `REQUIRED_FIELDS` / `FIELD_QUESTIONS` in `state.py`, extraction + validation in `extraction.py`, `FIELD_NAMES` in `app.py`, the User Story template |
-| Add a step | New node in `agent/workflow/nodes/`, wire it in `graph.py`, add it to `NODE_STATUS` / `NODE_STEP` in `app.py` |
+| Add a required field | `REQUIRED_FIELDS` / `FIELD_QUESTIONS` in `state.py`, extraction + validation in `extraction.py`, `FIELD_NAMES` in `agent/ui/views.py`, the User Story template |
+| Add a step | New node in `agent/workflow/nodes/`, wire it in `graph.py`, add it to `NODE_STATUS` (`agent/ui/handlers.py`) / `NODE_STEP` (`agent/ui/views.py`) |
 | Swap the checkpointer | `get_checkpointer` in `graph.py`; `_session_store` in `runner.py` puts the sessions table in the same database |
 | Create real tickets | After `draft_us`: a node that calls Azure DevOps / Jira (out of scope for the prototype) |
