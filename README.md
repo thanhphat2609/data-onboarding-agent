@@ -30,7 +30,7 @@ Detailed plan: see `PLAN.md` (prototype plan).
 | Added: web research, UI redesign, repo knowledge | ✅ |
 | Added: Docker/Codespaces, PostgreSQL sessions, login with roles | 🟡 Runs in Codespaces (v0.7.0); a full request + approval in Docker still to check |
 | Added: SearXNG + Trafilatura for web research | 🟡 Checked offline; real searches in a codespace pending |
-| Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1 |
+| Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1. Every prod setting in GitHub secrets/variables, `.env` written by the Deploy workflow |
 | Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches in a codespace pending |
 | Added: requester approves the draft before the Data Team | 🟡 Checked offline end to end (graph + UI handlers); ⬜ click through in a browser |
 | Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |

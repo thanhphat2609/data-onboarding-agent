@@ -1,6 +1,7 @@
 # Stage 2 of CI/CD: deploys VM 1 only when someone runs this workflow (Actions -> Deploy -> Run workflow); that
-# click is the approval. The commit must be on main and have a green CI run. Then over SSH:
-# git checkout <sha>, docker compose build --pull, up -d, prune old images and cache.
+# click is the approval. The commit must be on main and have a green CI run. The prod .env is written from the
+# repository secrets and variables (infrastructure/prod/render_env.py) and checked with `docker compose config`,
+# then over SSH: .env to the VM, git checkout <sha>, docker compose build --pull, up -d, prune old images and cache.
 # Disabled until the repository variable PROD_DEPLOY_ENABLED is "true" (VM 1 doesn't exist yet).
 name: Deploy
 
@@ -52,6 +53,17 @@ jobs:
             echo "::error::No green CI run for $sha; wait for CI or fix it first"; exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      # Every prod setting lives in GitHub: the keys of the target commit's .env.example, each from the secret or
+      # variable of the same name. Fails before touching the VM if a required one is missing.
+      - name: Write .env from secrets and variables
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+          VARS_JSON: ${{ toJSON(vars) }}
+          SHA: ${{ steps.check.outputs.sha }}
+        run: |
+          git checkout --quiet --detach "$SHA"
+          python3 infrastructure/prod/render_env.py infrastructure/prod/.env.example "$RUNNER_TEMP/prod.env"
+          docker compose --env-file "$RUNNER_TEMP/prod.env" -f infrastructure/prod/docker-compose.yml config --quiet
       - name: SSH key
         env:
           SSH_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
@@ -65,5 +77,8 @@ jobs:
         env:
           SHA: ${{ steps.check.outputs.sha }}
         run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" \
+            "set -e; umask 077; cat > '$REPO_DIR/infrastructure/prod/.env.new'; mv '$REPO_DIR/infrastructure/prod/.env.new' '$REPO_DIR/infrastructure/prod/.env'" \
+            < "$RUNNER_TEMP/prod.env"
           ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" \
             "set -e; cd '$REPO_DIR'; git fetch --prune origin; git show '$SHA:infrastructure/prod/deploy.sh' | bash -s -- '$SHA' $NO_CACHE"

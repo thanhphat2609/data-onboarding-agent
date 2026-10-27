@@ -4,7 +4,8 @@ The agent and the platform's shared PostgreSQL server on VM 1, next to data-onbo
 
 ```
 docker-compose.yml   postgres (databases onboarding_agent, airflow, platform) + searxng + app; creates the data-platform network
-.env.example         settings; copy to .env on the VM
+.env.example         every prod setting; the Deploy workflow writes .env on the VM from the GitHub secrets/variables of the same name
+render_env.py        used by the Deploy workflow: .env.example keys + secrets/variables -> .env (fails if a required one is missing)
 deploy.sh            run on VM 1 by the Deploy workflow: checkout <sha>, build, up, prune
 ```
 
@@ -13,7 +14,7 @@ deploy.sh            run on VM 1 by the Deploy workflow: checkout <sha>, build, 
 | Stage | Trigger | What runs |
 |---|---|---|
 | 1. CI (`.github/workflows/ci.yml`) | Pull request or push to `main` | Ruff (errors only), compile, `import app`, Compose files, image build (not pushed) |
-| 2. Deploy (`.github/workflows/deploy.yml`), approval | Someone runs **Actions → Deploy → Run workflow** on `main` | Checks the commit is on `main` with a green CI run, then VM 1: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune old images and week-old build cache |
+| 2. Deploy (`.github/workflows/deploy.yml`), approval | Someone runs **Actions → Deploy → Run workflow** on `main` | Checks the commit is on `main` with a green CI run; writes `.env` from the secrets and variables and checks it with `docker compose config`; then VM 1: `.env` replaced, `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune old images and week-old build cache |
 
 Separate from the two stages: `.github/workflows/delete-merged-branch.yml` deletes a pull request's branch once it is merged.
 
@@ -23,7 +24,9 @@ PostgreSQL is not recreated by a deploy unless its settings change. Deploy this 
 
 ## GitHub setup (Settings of this repository)
 
-Secrets and variables are per repository: set them here **and** in data-onboarding-ingestion. Both repositories can use the same SSH key and deploy user.
+**Every prod setting lives here**, nothing is edited on the VM: the Deploy workflow writes `infrastructure/prod/.env` on VM 1 on every run, one line per key of [.env.example](.env.example), from the secret or variable of the **same name** ([render_env.py](render_env.py)). It stops before touching the VM when a required secret is missing, when a password-like setting was saved as a variable, or when `docker compose config` rejects the result. To change a setting: edit it here, then run **Actions → Deploy**.
+
+Secrets and variables are per repository: set them here **and** in data-onboarding-ingestion. Both repositories can use the same SSH key and deploy user. One value is shared: this repository's `POSTGRES_AIRFLOW_PASSWORD` secret = ingestion's `AIRFLOW_DB_PASSWORD` secret.
 
 ### Secrets (Settings → Secrets and variables → Actions → New repository secret)
 
@@ -34,6 +37,22 @@ Secrets and variables are per repository: set them here **and** in data-onboardi
 | `PROD_SSH_USER` | `deploy` | Linux user on the VM, member of the `docker` group |
 | `PROD_VM1_HOST` | `20.198.10.15` or `vm1.dataplatform.example.com` | Address of VM 1 that GitHub's runners can reach |
 
+App settings (written into `.env`; generate passwords with `openssl rand -hex 24`, URL-safe characters only):
+
+| Name | Required | What it is |
+|---|---|---|
+| `POSTGRES_PASSWORD` | yes | `postgres` superuser, admin only |
+| `POSTGRES_AGENT_PASSWORD` | yes | Role `agent`, this app |
+| `POSTGRES_AIRFLOW_PASSWORD` | yes | Role `airflow`; same value as ingestion's `AIRFLOW_DB_PASSWORD` |
+| `POSTGRES_PLATFORM_PASSWORD` | yes | Role `platform`, ingestion's run history (empty database until its Phase 5) |
+| `PLATFORM_GITHUB_TOKEN` | yes | Fine-grained token, Contents: Read-only on data-onboarding-ingestion and data-onboarding-transformation |
+| `ACCOUNTS` | yes | Data Team logins, `email:password`, comma-separated |
+| `SEARXNG_SECRET` | yes | Any random string (`openssl rand -hex 32`) |
+| `TEAMS_WEBHOOK_URL` | no | The **Prod** channel's workflow URL (Teams → channel → Workflows → *Send webhook alerts to a channel*). Empty = messages written to `outputs/` |
+| `OLLAMA_API_KEY` | no | Only for a model behind the Colab proxy |
+
+The PostgreSQL passwords are read **only on the first start** (empty `pgdata` volume). Changing one later needs `ALTER ROLE <role> PASSWORD '…'` on the server as `postgres` first, then the new secret and a deploy; otherwise the app or Airflow can't connect. Which role is which: [POSTGRESQL.md → Roles and passwords](../../docs/POSTGRESQL.md#roles-and-passwords).
+
 ### Variables (same page → Variables tab → New repository variable)
 
 | Name | Example | What it is |
@@ -41,6 +60,9 @@ Secrets and variables are per repository: set them here **and** in data-onboardi
 | `PROD_DEPLOY_ENABLED` | `true` | Anything else (or unset) turns the Deploy workflow off. Leave unset until VM 1 is ready |
 | `PROD_REPO_DIR` | `/opt/data-onboarding-agent` | Where the repository is cloned on the VM (this is also the default) |
 | `PROD_SSH_PORT` | `22` | SSH port of the VM (default `22`) |
+| `DATA_TEAM` | `data.team@company.com` | **Required.** The Data Team login(s), comma-separated; same emails as in `ACCOUNTS` |
+| `OLLAMA_HOST`, `OLLAMA_MODEL` | `http://gpu-vm:11434`, `qwen2.5:14b` | The model; empty = rule-based |
+| `UI_PORT`, `POSTGRES_PORT`, `WEB_RESEARCH`, `WEBSEARCH_BROWSER`, `WITH_BROWSER`, `SEARXNG_URL`, `INGESTION_REPO`/`_REF`, `TRANSFORMATION_REPO`/`_REF` | | Optional; empty = the default in [docker-compose.yml](docker-compose.yml) |
 
 Variables are not secret: they show in the logs. Anything secret goes in Secrets.
 
@@ -54,9 +76,8 @@ For `main`: require a pull request before merging, and require the status checks
 sudo adduser --disabled-password deploy && sudo usermod -aG docker deploy
 sudo mkdir -p /opt/data-onboarding-agent && sudo chown deploy: /opt/data-onboarding-agent
 sudo -u deploy git clone https://github.com/thanhphat2609/data-onboarding-agent.git /opt/data-onboarding-agent
-cd /opt/data-onboarding-agent && sudo -u deploy cp infrastructure/prod/.env.example infrastructure/prod/.env
-# fill in infrastructure/prod/.env, then the first start:
-sudo -u deploy docker compose -f infrastructure/prod/docker-compose.yml up -d --build
 ```
 
-For a private repository, clone with a read-only **deploy key** (repository Settings → Deploy keys) instead of HTTPS. Application secrets (`ACCOUNTS`, database passwords (one per role, see [POSTGRESQL.md → Roles and passwords](../../docs/POSTGRESQL.md#roles-and-passwords)), `PLATFORM_GITHUB_TOKEN`, and `SEARXNG_SECRET`, any random string such as the output of `openssl rand -hex 32`) stay in `.env` on the VM, never in GitHub.
+Then set the secrets and variables above, `PROD_DEPLOY_ENABLED=true`, and run **Actions → Deploy**: the first run writes `.env` and starts PostgreSQL (creating the databases with the passwords from GitHub), SearXNG and the app.
+
+For a private repository, clone with a read-only **deploy key** (repository Settings → Deploy keys) instead of HTTPS. Don't edit `infrastructure/prod/.env` on the VM: the next deploy replaces it with what GitHub holds. It's written with owner-only permissions (`600`) and stays out of Git (`.gitignore`).
