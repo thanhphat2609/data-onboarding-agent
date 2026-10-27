@@ -88,6 +88,35 @@ From a desktop client (DBeaver, pgAdmin): host `127.0.0.1`, port `5432` (`POSTGR
 
 Useful `psql` commands: `\dt` lists tables, `\d sessions` shows columns, `\x auto` makes wide rows readable, `\q` quits.
 
+## Every table at a glance
+
+Run this first after a demo or a deploy: every database on the server, then every table the agent uses with its row count.
+
+```bash
+# Databases on the server (onboarding_agent, airflow, platform) and their owners
+docker exec -it data-onboarding-postgres psql -U agent -d onboarding_agent -c '\l'
+
+# The agent's tables and how many rows each has
+docker exec -it data-onboarding-postgres psql -U agent -d onboarding_agent -c "
+SELECT 'sessions' AS table_name, count(*) FROM sessions
+UNION ALL SELECT 'requesters', count(*) FROM requesters
+UNION ALL SELECT 'source_docs', count(*) FROM source_docs
+UNION ALL SELECT 'checkpoints', count(*) FROM checkpoints
+UNION ALL SELECT 'checkpoint_blobs', count(*) FROM checkpoint_blobs
+UNION ALL SELECT 'checkpoint_writes', count(*) FROM checkpoint_writes
+UNION ALL SELECT 'checkpoint_migrations', count(*) FROM checkpoint_migrations;"
+```
+
+| Table | What to check | Query |
+|---|---|---|
+| `sessions` | One row per chat session: status, who asked, who reviewed | [What happened](#what-happened), [Review](#review) |
+| `requesters` | Self-registered logins (no passwords, only scrypt hashes) | [Who signed in](#who-signed-in) |
+| `source_docs` | Docs links learned from approved requests | [Docs links the agent has learned](#docs-links-the-agent-has-learned) |
+| `checkpoints`, `checkpoint_blobs`, `checkpoint_writes` | LangGraph state, binary: count steps per session, read a state with the runner | [Stuck or odd sessions](#stuck-or-odd-sessions), [The full state of one session](#the-full-state-of-one-session) |
+| `checkpoint_migrations` | LangGraph's schema version; a few rows, never edited | `SELECT * FROM checkpoint_migrations;` |
+
+The tables are created by the app on its first start: an empty list means the app hasn't started against this database yet. The `airflow` and `platform` databases belong to data-onboarding-ingestion, and the `agent` role can't read them; their tables and checks are in [its docs/postgresql.md](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/postgresql.md).
+
 ## After the demo: what to check
 
 ### What happened

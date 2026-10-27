@@ -6,7 +6,7 @@
 | [ARCHITECTURE.md](ARCHITECTURE.md) | how the system is built: components, the agent graph, state, the two repos it reads, LLM, storage, integrations, deployment |
 | [PHASES.md](PHASES.md) | what was built in each phase, what is verified and what isn't, known issues and next steps |
 | [prototype_demo/](prototype_demo/README.md) | how to run the team demo that closes the prototype: preparation, the happy-path script click by click, the results sheet and past-request template |
-| [POSTGRESQL.md](POSTGRESQL.md) | where sessions are stored (PostgreSQL, next to Airflow's metadata DB) and the queries to check them after a demo |
+| [POSTGRESQL.md](POSTGRESQL.md) | where the agent's data is stored (PostgreSQL, next to Airflow's metadata DB), how to check every table at a glance, and the queries to check them after a demo |
 
 Other docs in the repo:
 
