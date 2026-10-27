@@ -59,6 +59,9 @@ WEB_RESEARCH = os.getenv("WEB_RESEARCH", "1").strip().lower() not in ("0", "fals
 RESEARCH_MAX_PAGES = int(os.getenv("RESEARCH_MAX_PAGES", "8"))
 RESEARCH_ROUNDS = int(os.getenv("RESEARCH_ROUNDS", "2"))
 RESEARCH_TIME_BUDGET_S = int(os.getenv("RESEARCH_TIME_BUDGET_S", "180"))
+# Search results and pages are cached for this many days (outputs/cache/research/), so a second request for the same
+# source gets the same links without new queries; 0 turns the cache off.
+RESEARCH_CACHE_DAYS = float(os.getenv("RESEARCH_CACHE_DAYS", "7"))
 
 # Max fields asked per turn, to stay within the <= 5 turns target.
 MAX_FIELDS_PER_QUESTION = 3
