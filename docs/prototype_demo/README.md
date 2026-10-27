@@ -1,6 +1,6 @@
 # Prototype demo
 
-Everything needed to run the team demo and close the prototype phase ([PLAN.md](../../PLAN.md)).
+Everything needed to run the team demo and close the prototype phase ([plan.md](../plan.md)).
 
 | Step | File | When | Time |
 |---|---|---|---|
@@ -11,7 +11,7 @@ Everything needed to run the team demo and close the prototype phase ([PLAN.md](
 
 ## What the demo has to prove
 
-The prototype is done when the agent does these 3 things on real platform data, and the Data Team agrees ([PLAN.md → Success criteria](../../PLAN.md#success-criteria)):
+The prototype is done when the agent does these 3 things on real platform data, and the Data Team agrees ([plan.md → Success criteria](../plan.md#success-criteria)):
 
 | # | The agent… | Shown in |
 |---|---|---|

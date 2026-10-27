@@ -1,6 +1,6 @@
 # 3. Results and closing the prototype
 
-Fill this in during the demo, then copy the outcome into [PHASES.md](../PHASES.md) (Phase 5) and the README status table.
+Fill this in during the demo, then copy the outcome into [phases.md](../phases.md) (Phase 5) and the README status table.
 
 Demo date: ____ · Presenter: ____ · Data Team reviewer: ____ · Mode: rule-based / model ____
 
@@ -66,4 +66,4 @@ Decision: ☐ close the prototype ☐ not yet, because: ____
 
 1. **Which model to use** on VM 1: rule-based, a GPU host running Ollama, or an approved LLM API.
 2. **VM 1**: GitHub secrets and variables ([infrastructure/prod/README.md](../../infrastructure/prod/README.md)), a prod `.env`, `PROD_DEPLOY_ENABLED=true`, then the first deploy (this repo before data-onboarding-ingestion).
-3. **3 User Stories per request** (spike, ingestion, transformation): built, open points in [PHASES.md](../PHASES.md#3-user-stories-per-request).
+3. **3 User Stories per request** (spike, ingestion, transformation): built, open points in [phases.md](../phases.md#3-user-stories-per-request).

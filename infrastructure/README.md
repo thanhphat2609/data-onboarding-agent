@@ -83,7 +83,7 @@ docker compose -f infrastructure/non-prod/docker-compose.yml logs -f        # fo
 docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build  # after changing code or requirements.txt (code is copied into the image)
 docker compose -f infrastructure/non-prod/docker-compose.yml up -d          # after editing .env (restart does not re-read it)
 docker compose -f infrastructure/non-prod/docker-compose.yml down           # stop; outputs/ and the pgdata volume are kept
-docker compose -f infrastructure/non-prod/docker-compose.yml exec postgres psql -U agent -d onboarding_agent   # query sessions (docs/POSTGRESQL.md)
+docker compose -f infrastructure/non-prod/docker-compose.yml exec postgres psql -U agent -d onboarding_agent   # query sessions (docs/postgresql.md)
 docker compose -f infrastructure/non-prod/docker-compose.yml exec app python -m agent.integrations.teams   # send a Teams test card from the container
 ```
 
@@ -93,7 +93,7 @@ Both survive `down` and rebuilds:
 
 | Where | Contents |
 |---|---|
-| `postgres` container (PostgreSQL 16), volume `pgdata` | Database `onboarding_agent`: sessions (LangGraph checkpoints + the `sessions` table). Databases `airflow` (Airflow's metadata DB) and `platform` (run records) for [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion). Queries and layout: [docs/POSTGRESQL.md](../docs/POSTGRESQL.md) |
+| `postgres` container (PostgreSQL 16), volume `pgdata` | Database `onboarding_agent`: sessions (LangGraph checkpoints + the `sessions` table). Databases `airflow` (Airflow's metadata DB) and `platform` (run records) for [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion). Queries and layout: [docs/postgresql.md](../docs/postgresql.md) |
 | `outputs/` on the host (bind mount `/app/outputs`) | User stories, feasibility, Teams messages, eval reports |
 
 The `searxng` container keeps nothing: it is the first search engine of the web research (no API key, no published port; the app calls `http://searxng:8080`). If it is down, research falls back to the other engines. Check it with `docker compose -f infrastructure/non-prod/docker-compose.yml exec app python -c "from agent.research import websearch; print(websearch.search('google search console API', 3))"`.
