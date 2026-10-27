@@ -59,9 +59,9 @@ Show the **R** window: the welcome text and the three examples.
 
 | # | Window | Do | What should happen | Say |
 |---|---|---|---|---|
-| D1 | R | The requester's page | *"✅ The Data Team approved…"*, the User Story preview, **⬇ User Story** and **⬇ Summary** downloads. Step tracker: **Done** | |
+| D1 | R | The requester's page | *"✅ The Data Team approved…"*, the preview (the parent User Story, then the 3 User Stories), **⬇ User Stories (.zip)** and **⬇ Summary** downloads. Step tracker: **Done** | |
 | D2 | T | Show the channel | Card **"[REQ-…] Request approved — User Story ready"**: title, request, feasibility, recommendation `crm_customers_current`, number of risks, the User Story path | |
-| D3 | Terminal | `ls outputs/<request_id>/` and `cat outputs/<request_id>/user_story.md` | `request.json`, `feasibility.json`, `user_story.md`, `us_1_spike.md`, `us_2_ingestion.md`, `us_3_transformation.md`, `summary.md`. **No** `teams_messages.jsonl` | "This is the deliverable: the request's User Story, then the 3 User Stories to do in order: a spike, ingestion and transformation, each non-prod then prod. Read them as if they landed in your backlog today." |
+| D3 | Terminal | `ls outputs/<request_id>/` and `cat outputs/<request_id>/user_story.md` | `request.json`, `feasibility.json`, `user_story.md`, `us_1_spike.md`, `us_2_ingestion.md`, `us_3_transformation.md`, `user_stories_<request_id>.zip`, `summary.md`. **No** `teams_messages.jsonl` | "This is the deliverable: the request's User Story, then the 3 User Stories to do in order: a spike, ingestion and transformation, each non-prod then prod. Read them as if they landed in your backlog today." |
 | D4 | Terminal | `docker exec -it data-onboarding-postgres psql -U agent -d onboarding_agent -c "SELECT request_id, requested_by, status, reviewed_by, review_action FROM sessions ORDER BY created_at DESC LIMIT 1;"` | `status = done`, `requested_by = demo.requester@gmail.com`, `reviewed_by = data.team@gmail.com`, `review_action = approve` | "Sessions survive a restart: they're in PostgreSQL, next to Airflow's metadata database." |
 | D5 | Everyone | **Ask the team to rate the User Story** | | "Usable as is, usable with minor edits, major edits, or unusable? And what would you change?" |
 

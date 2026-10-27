@@ -1,5 +1,6 @@
 """Draft the User Story + pipeline proposal. Fixed template; the LLM (if any) only writes title/description."""
 import json
+import zipfile
 
 from agent.llm.client import get_llm, load_prompt, safe_call
 from agent.workflow.nodes.common import output_dir, rel
@@ -217,27 +218,30 @@ def draft_us(state: dict) -> dict:
 
     md = render_user_story(state, title, description, extra_ac)
     out = output_dir(state)
-    # The work itself: 3 User Stories, one file each (to copy into the backlog), and all of them in user_story.md.
+    # The work itself: 3 User Stories, one file each, the only copy of each (to maintain and copy into the backlog).
+    # user_story.md is their parent: the request, feasibility and research, with a list of the 3.
     stories = user_stories(state, current_research(state))
-    paths = []
+    files = []
     for i, story in enumerate(stories, 1):
         path = out / f"us_{i}_{story['key']}.md"
         path.write_text(story["markdown"], encoding="utf-8")
-        paths.append(rel(path))
-    footer = md.rfind("\n---\n")  # the 3 User Stories go before the closing note
-    md = md[:footer] + work_items_section(stories, paths) + md[footer:]
+        files.append(path)
+    footer = md.rfind("\n---\n")  # the list goes before the closing note
+    md = md[:footer] + stories_list(stories, [f.name for f in files]) + md[footer:]
     (out / "request.json").write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "feasibility.json").write_text(json.dumps(state["feasibility"], ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "user_story.md").write_text(md, encoding="utf-8")
+    bundle = out / f"user_stories_{state['request_id']}.zip"
+    with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in [out / "user_story.md", *files]:
+            zf.write(f, arcname=f"{state['request_id']}/{f.name}")
     return {"outputs": {**(state.get("outputs") or {}), "title": title, "user_story": rel(out / "user_story.md"),
-                        "stories": [{"title": s["title"], "file": p} for s, p in zip(stories, paths)]}}
+                        "bundle": rel(bundle),
+                        "stories": [{"title": s["title"], "file": rel(f)} for s, f in zip(stories, files)]}}
 
 
-def work_items_section(stories: list[dict], paths: list[str]) -> str:
-    """The 3 User Stories appended to the main one: a list, then each in full (headings one level down)."""
-    lines = ["", "## The 3 User Stories", "Done in order, each blocked by the one before. One file each, to copy into the backlog:", ""]
-    lines += [f"{i}. **{s['title']}** — `{p}`" for i, (s, p) in enumerate(zip(stories, paths), 1)]
-    for s in stories:
-        lines += ["", "---", ""]
-        lines += [f"##{line}" if line.startswith("#") else line for line in s["markdown"].rstrip().split("\n")]
+def stories_list(stories: list[dict], names: list[str]) -> str:
+    """The parent's list of its 3 User Stories, linked to their files (next to user_story.md, and in the zip)."""
+    lines = ["", "## The 3 User Stories", "Done in order, each blocked by the one before. One file each:", ""]
+    lines += [f"{i}. [{s['title']}]({name})" for i, (s, name) in enumerate(zip(stories, names), 1)]
     return "\n".join(lines) + "\n"

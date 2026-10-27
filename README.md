@@ -36,7 +36,7 @@ Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
 | Added: docs links learned from approved requests (`source_docs`) | 🟡 Checked offline end to end: an approved request's links are listed first in the next one, even with no search results |
 | Added: requester approves the draft before the Data Team | 🟡 Checked offline end to end (graph + UI handlers); ⬜ click through in a browser |
 | Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |
-| Added: 3 User Stories per request (spike, ingestion non-prod + prod, transformation non-prod + prod) | 🟡 Drafted after the Data Team approves; checked offline end to end. Open: new dataset vs. change, when to skip ingestion, int/mart detail ([docs/phases.md](docs/phases.md#3-user-stories-per-request)) |
+| Added: 3 User Stories per request (spike, ingestion non-prod + prod, transformation non-prod + prod) | 🟡 Drafted after the Data Team approves, one file each, downloaded as one zip with their parent; checked offline end to end. Open: new dataset vs. change, when to skip ingestion, int/mart detail ([docs/phases.md](docs/phases.md#3-user-stories-per-request)) |
 
 ---
 
