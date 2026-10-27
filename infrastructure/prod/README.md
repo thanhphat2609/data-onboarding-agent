@@ -59,4 +59,4 @@ cd /opt/data-onboarding-agent && sudo -u deploy cp infrastructure/prod/.env.exam
 sudo -u deploy docker compose -f infrastructure/prod/docker-compose.yml up -d --build
 ```
 
-For a private repository, clone with a read-only **deploy key** (repository Settings → Deploy keys) instead of HTTPS. Application secrets (`ACCOUNTS`, database passwords, `PLATFORM_GITHUB_TOKEN`, and `SEARXNG_SECRET`, any random string such as the output of `openssl rand -hex 32`) stay in `.env` on the VM, never in GitHub.
+For a private repository, clone with a read-only **deploy key** (repository Settings → Deploy keys) instead of HTTPS. Application secrets (`ACCOUNTS`, database passwords (one per role, see [POSTGRESQL.md → Roles and passwords](../../docs/POSTGRESQL.md#roles-and-passwords)), `PLATFORM_GITHUB_TOKEN`, and `SEARXNG_SECRET`, any random string such as the output of `openssl rand -hex 32`) stay in `.env` on the VM, never in GitHub.
