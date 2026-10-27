@@ -13,7 +13,9 @@ Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
 - **[docs/how-it-works.md](docs/how-it-works.md)**: a request from first message to User Story, for requesters and the Data Team
 - **[docs/architecture.md](docs/architecture.md)**: components, the agent graph, state, design rules, storage, deployment
 - **[docs/phases.md](docs/phases.md)**: status of each phase, known issues, next steps
+- **[docs/postgresql.md](docs/postgresql.md)**: the agent's tables, every one checked at a glance, and the queries after a demo
 - **[docs/prototype_demo/](docs/prototype_demo/README.md)**: the demo that closes the prototype: prepare, happy-path script, results and the close decision
+- **[docs/plan.md](docs/plan.md)**: the original prototype plan
 
 ## Status
 
@@ -73,10 +75,11 @@ data-onboarding-agent/
 │   ├── workflow/              # the LangGraph flow
 │   │   ├── graph.py           #   build graph, PostgreSQL / SQLite checkpointer
 │   │   ├── runner.py          #   start/reply API for the UI and scripts
-│   │   ├── sessions.py        #   sessions table: owner, status, reviewer per thread_id
+│   │   ├── sessions.py        #   sessions, requesters, source_docs tables
 │   │   ├── extraction.py      #   field extraction (rule-based) + validation, source name cleanup
 │   │   ├── followup.py        #   messages while waiting for the Data Team: questions answered, changes confirmed
 │   │   ├── evaluate.py        #   run past requests, compare with expectations + team handling
+│   │   ├── stories.py         #   the 3 User Stories (spike, ingestion, transformation)
 │   │   └── nodes/             #   one file per node:
 │   │       ├── intake.py      #     intake + ask_user (incl. "Where does it come from?")
 │   │       ├── requester_review.py # requester checks the draft (approve or change)
@@ -95,6 +98,9 @@ data-onboarding-agent/
 │   │   └── lookup.py          #   lookup_source, search_models (also the notebook's tool-calling test)
 │   ├── research/              # sources the platform can't onboard yet
 │   │   ├── investigate.py     #   web research in rounds: top 5 links, key passages, questions, draft notes
+│   │   ├── cache.py           #   search results + pages cached 7 days (outputs/cache/research/)
+│   │   ├── learned.py         #   docs links learned from approved requests (source_docs table)
+│   │   ├── docs_hints.yaml    #   optional seed: official docs of a few sources
 │   │   └── websearch/         #   two tools, web_search + web_fetch (port of web-search-mcp, LICENSE kept):
 │   │       ├── engines.py     #     web_search: SearXNG → Brave (headless browser) → DuckDuckGo (ddgs)
 │   │       ├── content.py     #     web_fetch: HTTP, headless-browser fallback
@@ -105,7 +111,7 @@ data-onboarding-agent/
 │   │       └── mcp_server.py  #     the two tools as an MCP server
 │   ├── llm/                   # optional Ollama client (client.py) + prompts/
 │   └── integrations/teams.py  # Teams webhook (or mock); `python -m agent.integrations.teams <url>` sends a test card
-├── tests/                     # pytest, offline: fixtures/ holds small copies of the two platform repos
+├── tests/                     # pytest, offline, run by CI: test_*.py + fixtures/ (small copies of the two platform repos)
 ├── docs/                      # architecture, how it works, phase status, PostgreSQL queries, prototype_demo/ (demo script)
 ├── infrastructure/            # Dockerfile, non-prod/ compose (laptop / Codespaces), prod/ (VM 1, draft), postgres/ init, searxng/ settings; see infrastructure/README.md
 ├── .devcontainer/             # Codespaces: runs infrastructure/non-prod/codespace-network.sh on start
@@ -139,6 +145,15 @@ python -m venv .venv
 ```
 
 Or activate the venv first (`.venv\Scripts\Activate.ps1`, or `source .venv/bin/activate` on Linux/Mac) and use plain `python`. If PowerShell says running scripts is disabled, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
+
+### Tests
+
+```bash
+python -m pip install pytest
+python -m pytest -q tests          # 34 tests, ~5 s, offline: no network, LLM or database server
+```
+
+CI runs the same tests on every push. They read small copies of the two platform repos in `tests/fixtures/` (one `sqlserver` template, the `crm` connection and job, two dbt models) and fake the web search, so they never depend on GitHub or a search engine. Add or update a test with every fix or feature (`CLAUDE.md`).
 
 ## Run with Docker / GitHub Codespaces
 
