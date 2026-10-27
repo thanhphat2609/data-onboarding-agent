@@ -31,7 +31,8 @@ Detailed plan: see `PLAN.md` (prototype plan).
 | Added: Docker/Codespaces, PostgreSQL sessions, login with roles | 🟡 Runs in Codespaces (v0.7.0); a full request + approval in Docker still to check |
 | Added: SearXNG + Trafilatura for web research | 🟡 Checked offline; real searches in a codespace pending |
 | Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1. Every prod setting in GitHub secrets/variables, `.env` written by the Deploy workflow |
-| Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches in a codespace pending |
+| Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches ran in a codespace (2026-10-27) |
+| Added: steadier web research (known official docs, stricter on-topic check, 7-day cache, engine top-up) | 🟡 Checked offline, incl. a second run from the cache; a real double run in a codespace pending |
 | Added: requester approves the draft before the Data Team | 🟡 Checked offline end to end (graph + UI handlers); ⬜ click through in a browser |
 | Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |
 | Added: 3 User Stories per request (spike, ingestion non-prod + prod, transformation non-prod + prod) | 🟡 Drafted after the Data Team approves; checked offline end to end. Open: new dataset vs. change, when to skip ingestion, int/mart detail ([docs/PHASES.md](docs/PHASES.md#3-user-stories-per-request)) |
@@ -150,7 +151,7 @@ For settings (`.env` / Codespaces secrets), where data is stored, port visibilit
 
 Web research uses two tools from [agent/research/websearch/](agent/research/websearch/), a Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): **`web_search`** (title, URL, snippet per result) and **`web_fetch`** (main text of one page). Search goes to the self-hosted **SearXNG** container first (Docker setups, `SEARXNG_URL`), then to Brave (headless browser) and DuckDuckGo (`ddgs`); no API keys. Pages are read over HTTP with **Trafilatura** for the main text, or in a headless browser when they need JavaScript.
 
-For each source the platform can't onboard yet, research runs in up to 2 rounds (one search per topic, then follow-ups on the docs site for what is still missing) and hands the Data Team the **top 5 links**, key passages, questions and draft source notes. All of it is unverified and never changes the feasibility result ([details](docs/ARCHITECTURE.md#web-search)).
+For each source the platform can't onboard yet, research runs in up to 2 rounds (one search per topic, then follow-ups on the docs site for what is still missing) and hands the Data Team the **top 5 links**, key passages, questions and draft source notes. Known official docs ([docs_hints.yaml](agent/research/docs_hints.yaml)) are always among the links; results that only mention the source in passing are dropped; searches and pages are cached for 7 days, so a second request for the same source gets the same links. All of it is unverified and never changes the feasibility result ([details](docs/ARCHITECTURE.md#web-search)).
 
 - **Headless browser (optional):** `python -m playwright install chromium` once (the Playwright package is in `requirements.txt`). Without it, Brave is skipped (search uses SearXNG, then DuckDuckGo through `ddgs`) and JavaScript-only pages stay unreadable. Docker: `WITH_BROWSER=true`.
 - **MCP server** with the same two tools (`web_search`, `web_fetch`), for LM Studio, Claude Desktop or other MCP clients:
@@ -233,6 +234,7 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 | `RESEARCH_MAX_PAGES` | `8` | Pages read per source, across all rounds |
 | `RESEARCH_ROUNDS` | `2` | Research rounds per source: planned searches, then follow-up searches on the docs site for topics still without evidence |
 | `RESEARCH_TIME_BUDGET_S` | `180` | Seconds of research per source before it stops with what it has |
+| `RESEARCH_CACHE_DAYS` | `7` | Days search results and pages stay cached in `outputs/cache/research/`, so the same source gets the same links again; `0` = off |
 | `WEBSEARCH_BROWSER` | `auto` | `off` = never use the headless browser, even when Playwright is installed |
 | `SEARXNG_URL` | empty (compose: `http://searxng:8080`) | Self-hosted SearXNG, the first search engine for web research; empty = only Brave (with the browser) and DuckDuckGo (`ddgs`) |
 | `RELEVANCE_THRESHOLD`, `ENABLE_RELEVANCE_CHECKING`, `FORCE_MULTI_ENGINE_SEARCH` | `0.3`, `true`, `false` | Search result quality check (same as web-search-mcp) |

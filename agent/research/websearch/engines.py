@@ -7,6 +7,8 @@ means no results. Used when SEARXNG_URL is set; the engines below stay as the fa
 Ported from web-search-mcp (src/search-engine.ts): Brave's result parsing (selectors) and the quality check:
 results score by query keywords and word pairs found in title/description/URL; a score >= RELEVANCE_THRESHOLD
 returns at once, otherwise the best list across all engines is used. Differences:
+- A good list with fewer than MIN_RESULTS results is topped up from the next engine (one engine rate-limiting
+  this network often returns just one or two results), and SearXNG gets SEARXNG_TIMEOUT to answer.
 - Brave is only used when the headless browser is available (browser.py): over plain HTTP it answers
   automated clients with 429.
 - Removed 2026-10-26 as not needed: Bing (generic results for automated clients, even in the headless
@@ -34,6 +36,10 @@ from agent.research.websearch.ratelimit import RateLimiter
 log = logging.getLogger(__name__)
 
 _limiter = RateLimiter(max_per_minute=10)
+# SearXNG waits for several engines before it answers; with less time it gives up and the weaker fallbacks run.
+SEARXNG_TIMEOUT = 12.0
+# A good-quality list shorter than this is topped up from the next engine instead of returned as it is.
+MIN_RESULTS = 3
 _COMMON_WORDS = {
     "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by", "is", "are", "was",
     "were", "be", "been", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may",
@@ -115,7 +121,7 @@ def search_brave(query: str, num_results: int, timeout: float) -> list[SearchRes
 def search_searxng(query: str, num_results: int, timeout: float) -> list[SearchResult]:
     """Not in the original: the self-hosted SearXNG's JSON API (results merged from several engines)."""
     resp = requests.get(f"{os.getenv('SEARXNG_URL', '').rstrip('/')}/search",
-                        params={"q": query, "format": "json", "language": "en"}, timeout=max(timeout, 8.0))
+                        params={"q": query, "format": "json", "language": "en"}, timeout=max(timeout, SEARXNG_TIMEOUT))
     resp.raise_for_status()
     results: list[SearchResult] = []
     for hit in resp.json().get("results", []):
@@ -169,6 +175,8 @@ def search(query: str, num_results: int = 5, timeout: float = 12.0) -> SearchRes
 
     def run() -> SearchResponse:
         best, best_engine, best_quality = [], "None", 0.0
+        merged: list[SearchResult] = []  # good-quality lists that were too short, topped up engine after engine
+        merged_from: list[str] = []
         per_engine = min(timeout / 3, 4.0)
         engines = [(n, f) for n, f, needs_browser in ENGINES
                    if (browser.available() or not needs_browser) and (n != "SearXNG" or os.getenv("SEARXNG_URL"))]
@@ -185,7 +193,12 @@ def search(query: str, num_results: int = 5, timeout: float = 12.0) -> SearchRes
             if quality > best_quality:
                 best, best_engine, best_quality = results, name, quality
             if not force_all and quality >= threshold:
-                return SearchResponse(query, name, results)
+                merged += [r for r in results if all(r.url != m.url for m in merged)]
+                merged_from.append(name)
+                if len(merged) >= min(MIN_RESULTS, num_results):
+                    return SearchResponse(query, " + ".join(merged_from), merged[:num_results])
+        if len(merged) >= len(best):
+            return SearchResponse(query, " + ".join(merged_from) or best_engine, merged[:num_results] or best)
         return SearchResponse(query, best_engine, best)
 
     return _limiter.execute(run)

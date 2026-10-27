@@ -1,0 +1,20 @@
+# Official documentation for sources the platform can't onboard yet, read first by the web research
+# (agent/research/investigate.py) and always listed in the top links, whatever the search engines return.
+# Key: the source name as searched (lowercase, vendor included, e.g. "google search console").
+# aliases: other names requesters use. Add a source when the Data Team knows its docs; keep official pages only.
+google search console:
+  aliases: [gsc, search console]
+  urls:
+    - https://developers.google.com/webmaster-tools/about
+    - https://developers.google.com/webmaster-tools/v1/api_reference_index
+    - https://developers.google.com/webmaster-tools/limits
+    - https://support.google.com/webmasters/answer/7576553
+google analytics 4:
+  aliases: [ga4, google analytics]
+  urls:
+    - https://developers.google.com/analytics/devguides/reporting/data/v1
+    - https://support.google.com/analytics/answer/9358801
+google ads:
+  aliases: []
+  urls:
+    - https://developers.google.com/google-ads/api/docs/start
