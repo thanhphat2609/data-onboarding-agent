@@ -11,7 +11,8 @@ Research runs in rounds, like a person (or Claude) researching instead of a sing
   5. Show the work: every query is kept in findings["searches"] and listed in the User Story.
   6. Top links: the TOP_LINKS most relevant links from every search, read or not, so the team always has a place
      to start even when reading or summarising the pages fails.
-Known official docs (docs_hints.yaml) are read first and always listed, whatever the search engines return.
+Known official docs (docs_hints.yaml) and links learned from approved requests (learned.py) are read first and
+always listed, whatever the search engines return.
 A result counts only when its title or URL names the source (Google Analytics pages don't count for Google Search
 Console), and a page whose text never names it gives no passages. Search results and pages are cached for
 RESEARCH_CACHE_DAYS (agent/research/cache.py), so asking about the same source again gives the same links.
@@ -32,7 +33,7 @@ from urllib.parse import quote_plus, urlparse
 import yaml
 
 from agent import config
-from agent.research import cache
+from agent.research import cache, learned
 from agent.workflow.extraction import VENDOR_PRODUCTS, norm
 from agent.llm.client import get_llm, load_prompt, safe_call
 from agent.research import websearch
@@ -228,12 +229,13 @@ def _missing_topics(pages: list[dict]) -> list[str]:
 
 
 def _top_links(source: str, pasted: list[str], hits: dict, pages: list[dict], docs_host: str | None,
-               known: list[str] = ()) -> list[dict]:
+               known: dict[str, str] | None = None) -> list[dict]:
     """The TOP_LINKS most relevant links, read or not: links the requester pasted first, then by docs site,
     pages with useful sentences, and how many topic searches found the page. With no result at all,
     a ready-made search link, so there is still somewhere to start."""
     read = {p["url"]: p for p in pages if not p.get("error")}
     off_topic = {p["url"] for p in pages if p.get("off_topic")}
+    known = known or {}
     first = list(dict.fromkeys([*pasted, *known]))
 
     def score(url: str) -> int:
@@ -241,7 +243,7 @@ def _top_links(source: str, pasted: list[str], hits: dict, pages: list[dict], do
 
     ranked = sorted((u for u in hits if u not in first and u not in off_topic), key=score, reverse=True)
     links = [{"url": u, "title": read.get(u, {}).get("title") or u,
-              "found_for": ["requester" if u in pasted else "known docs"]} for u in first]
+              "found_for": ["requester" if u in pasted else known[u]]} for u in first]
     links += [{"url": u, "title": read.get(u, {}).get("title") or hits[u]["title"] or u, "found_for": hits[u]["topics"]}
               for u in ranked]
     if not links:
@@ -398,8 +400,13 @@ def _research(source: str, request: dict, messages: list[dict], findings: dict) 
 
     name = search_name(source, request.get("source_origin", ""))
     pasted = links_from_messages(messages, source, request.get("sources", []))
-    known = [u for u in known_docs(name) if u not in pasted]
-    findings["known_docs"] = known
+    # Known docs: the hints file first, then links learned from approved requests (url -> why it is listed).
+    known = {u: "known docs" for u in known_docs(name)}
+    for link in learned.links(name):
+        known.setdefault(link["url"], f"approved before ({link['approved']}x)")
+    known = {u: why for u, why in known.items() if u not in pasted}
+    findings["known_docs"] = list(known)
+    findings["search_name"] = name
     max_pages = config.RESEARCH_MAX_PAGES + len(known)  # known docs come on top of the searches' pages
 
     def read(candidates: list[tuple[str, str]], limit: int, round_no: int) -> None:
@@ -425,7 +432,7 @@ def _research(source: str, request: dict, messages: list[dict], findings: dict) 
         if time_left():
             found += _search(query.format(source=name), name, findings, 1, errors, topic, hits)
     found = list(dict.fromkeys(found))
-    docs_host = _docs_host(found, source, known)
+    docs_host = _docs_host(found, source, list(known))
     findings["docs_site"] = docs_host
     found.sort(key=lambda u: _priority(u, docs_host), reverse=True)  # stable: search order among equals
     first_round = max(3, config.RESEARCH_MAX_PAGES // 2) if config.RESEARCH_ROUNDS > 1 else config.RESEARCH_MAX_PAGES

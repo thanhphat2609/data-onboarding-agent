@@ -13,6 +13,7 @@ postgres 16 (container data-onboarding-postgres, volume pgdata)
 └── onboarding_agent   ← this app (owner: agent)
     ├── sessions               one row per chat session: who, status, review   (ours, easy to query)
     ├── requesters             self-registered logins: email, scrypt password hash, created_at (ours)
+    ├── source_docs            docs links learned from approved requests, per source: url, title, times approved (ours)
     ├── checkpoints            LangGraph: one row per graph step per session
     ├── checkpoint_blobs       LangGraph: state values (binary, msgpack)
     ├── checkpoint_writes      LangGraph: pending writes of a step (binary)
@@ -165,6 +166,17 @@ SELECT email, created_at FROM requesters ORDER BY created_at DESC;
 
 -- Reset a forgotten password: their next sign-in sets a new one; their sessions are kept
 DELETE FROM requesters WHERE email = 'alice@gmail.com';
+```
+
+### Docs links the agent has learned
+
+Every request the Data Team approves stores the top links of each source it researched; the next request for that source reads them first ([learned.py](../agent/research/learned.py)).
+
+```sql
+SELECT source, approved, url, title, last_approved_at FROM source_docs ORDER BY source, approved DESC;
+
+-- Forget a wrong link
+DELETE FROM source_docs WHERE source = 'google search console' AND url = 'https://…';
 ```
 
 ## Clean up test sessions

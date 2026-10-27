@@ -1,5 +1,6 @@
-# Official documentation for sources the platform can't onboard yet, read first by the web research
-# (agent/research/investigate.py) and always listed in the top links, whatever the search engines return.
+# OPTIONAL SEED. Official docs for sources nobody has asked about yet. The agent learns docs links by itself from
+# every request the Data Team approves (source_docs table, agent/research/learned.py), so this file doesn't need to
+# list every source; keep it short. Read first by the web research and always listed in the top links.
 # Key: the source name as searched (lowercase, vendor included, e.g. "google search console").
 # aliases: other names requesters use. Add a source when the Data Team knows its docs; keep official pages only.
 google search console:
