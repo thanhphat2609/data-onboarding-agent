@@ -13,7 +13,7 @@ deploy.sh            run on VM 1 by the Deploy workflow: checkout <sha>, build, 
 
 | Stage | Trigger | What runs |
 |---|---|---|
-| 1. CI (`.github/workflows/ci.yml`) | Pull request or push to `main` | Ruff (errors only), compile, `import app`, Compose files, image build (not pushed) |
+| 1. CI (`.github/workflows/ci.yml`) | Pull request or push to `main` | Ruff (errors only), compile, `import app`, the `pytest` suite (offline), Compose files, image build (not pushed) |
 | 2. Deploy (`.github/workflows/deploy.yml`), approval | Someone runs **Actions → Deploy → Run workflow** on `main` | Checks the commit is on `main` with a green CI run; writes `.env` from the secrets and variables and checks it with `docker compose config`; then VM 1: `.env` replaced, `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune old images and week-old build cache |
 
 Separate from the two stages: `.github/workflows/delete-merged-branch.yml` deletes a pull request's branch once it is merged.

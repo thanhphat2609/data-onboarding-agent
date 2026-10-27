@@ -33,6 +33,7 @@ Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
 | Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1. Every prod setting in GitHub secrets/variables, `.env` written by the Deploy workflow |
 | Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches ran in a codespace (2026-10-27) |
 | Added: steadier web research (known official docs, stricter on-topic check, 7-day cache, engine top-up) | 🟡 Checked offline, incl. a second run from the cache; a real double run in a codespace pending |
+| Added: tests (`pytest`, offline, run by CI on every push) | ✅ 32 tests: intake, the 4 kinds of feasibility + the gap, outputs (3 User Stories + zip), web research, learned links, `render_env.py` |
 | Added: docs links learned from approved requests (`source_docs`) | 🟡 Checked offline end to end: an approved request's links are listed first in the next one, even with no search results |
 | Added: requester approves the draft before the Data Team | 🟡 Checked offline end to end (graph + UI handlers); ⬜ click through in a browser |
 | Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |
@@ -103,6 +104,7 @@ data-onboarding-agent/
 │   │       └── mcp_server.py  #     the two tools as an MCP server
 │   ├── llm/                   # optional Ollama client (client.py) + prompts/
 │   └── integrations/teams.py  # Teams webhook (or mock); `python -m agent.integrations.teams <url>` sends a test card
+├── tests/                     # pytest, offline: fixtures/ holds small copies of the two platform repos
 ├── docs/                      # architecture, how it works, phase status, PostgreSQL queries, prototype_demo/ (demo script)
 ├── infrastructure/            # Dockerfile, non-prod/ compose (laptop / Codespaces), prod/ (VM 1, draft), postgres/ init, searxng/ settings; see infrastructure/README.md
 ├── .devcontainer/             # Codespaces: runs infrastructure/non-prod/codespace-network.sh on start
@@ -132,6 +134,7 @@ python -m venv .venv
 
 .venv\Scripts\python app.py                   # web UI at http://127.0.0.1:7860 (--share for a public link)
 .venv\Scripts\python -m agent.workflow.evaluate <folder>   # replay past requests (YAML) and compare
+.venv\Scripts\python -m pip install pytest; .venv\Scripts\python -m pytest -q tests   # the tests CI runs, offline, ~1 s
 ```
 
 Or activate the venv first (`.venv\Scripts\Activate.ps1`, or `source .venv/bin/activate` on Linux/Mac) and use plain `python`. If PowerShell says running scripts is disabled, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.

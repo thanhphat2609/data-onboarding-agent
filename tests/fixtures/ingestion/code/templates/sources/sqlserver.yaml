@@ -1,0 +1,5 @@
+kind: SourceTemplate
+name: sqlserver
+version: 1
+connector: jdbc
+dialect: tsql

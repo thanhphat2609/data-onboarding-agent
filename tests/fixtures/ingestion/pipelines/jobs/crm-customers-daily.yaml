@@ -1,0 +1,10 @@
+kind: IngestionJob
+name: crm-customers-daily
+connection: crm-sqlserver-nonprod
+source:
+  query: SELECT customer_id, full_name, segment_id FROM dbo.customers
+sink:
+  template: adls_parquet@1
+  params:
+    path: crm/dbo/customers
+schedule: 0 2 * * *
