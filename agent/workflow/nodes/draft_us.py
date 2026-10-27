@@ -3,6 +3,7 @@ import json
 
 from agent.llm.client import get_llm, load_prompt, safe_call
 from agent.workflow.nodes.common import output_dir, rel
+from agent.workflow.stories import user_stories
 
 KIND_LABEL = {
     "existing_model": "Reuse existing dbt model",
@@ -215,7 +216,27 @@ def draft_us(state: dict) -> dict:
 
     md = render_user_story(state, title, description, extra_ac)
     out = output_dir(state)
+    # The work itself: 3 User Stories, one file each (to copy into the backlog), and all of them in user_story.md.
+    stories = user_stories(state, current_research(state))
+    paths = []
+    for i, story in enumerate(stories, 1):
+        path = out / f"us_{i}_{story['key']}.md"
+        path.write_text(story["markdown"], encoding="utf-8")
+        paths.append(rel(path))
+    footer = md.rfind("\n---\n")  # the 3 User Stories go before the closing note
+    md = md[:footer] + work_items_section(stories, paths) + md[footer:]
     (out / "request.json").write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "feasibility.json").write_text(json.dumps(state["feasibility"], ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "user_story.md").write_text(md, encoding="utf-8")
-    return {"outputs": {**(state.get("outputs") or {}), "title": title, "user_story": rel(out / "user_story.md")}}
+    return {"outputs": {**(state.get("outputs") or {}), "title": title, "user_story": rel(out / "user_story.md"),
+                        "stories": [{"title": s["title"], "file": p} for s, p in zip(stories, paths)]}}
+
+
+def work_items_section(stories: list[dict], paths: list[str]) -> str:
+    """The 3 User Stories appended to the main one: a list, then each in full (headings one level down)."""
+    lines = ["", "## The 3 User Stories", "Done in order, each blocked by the one before. One file each, to copy into the backlog:", ""]
+    lines += [f"{i}. **{s['title']}** — `{p}`" for i, (s, p) in enumerate(zip(stories, paths), 1)]
+    for s in stories:
+        lines += ["", "---", ""]
+        lines += [f"##{line}" if line.startswith("#") else line for line in s["markdown"].rstrip().split("\n")]
+    return "\n".join(lines) + "\n"

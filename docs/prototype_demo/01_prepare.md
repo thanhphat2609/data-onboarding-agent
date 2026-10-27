@@ -61,7 +61,7 @@ The header pill shows **rule-based** or the model name. Check that it matches wh
 Run [the happy path](02_happy_path.md) parts A–D once, alone, with a throwaway requester (e.g. `dry.run@gmail.com`). Check:
 
 - [ ] both Teams cards arrived ("New data request", then "Request approved — User Story ready")
-- [ ] `outputs/<request_id>/` has `request.json`, `feasibility.json`, `user_story.md`, `summary.md`, and **no** `teams_messages.jsonl` (that file means Teams was mocked or the webhook failed)
+- [ ] `outputs/<request_id>/` has `request.json`, `feasibility.json`, `user_story.md`, `us_1_spike.md`, `us_2_ingestion.md`, `us_3_transformation.md`, `summary.md`, and **no** `teams_messages.jsonl` (that file means Teams was mocked or the webhook failed)
 - [ ] the session is in PostgreSQL:
   ```bash
   docker exec -it data-onboarding-postgres psql -U agent -d onboarding_agent \

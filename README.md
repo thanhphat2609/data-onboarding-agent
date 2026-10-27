@@ -34,7 +34,7 @@ Detailed plan: see `PLAN.md` (prototype plan).
 | Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches in a codespace pending |
 | Added: requester approves the draft before the Data Team | 🟡 Checked offline end to end (graph + UI handlers); ⬜ click through in a browser |
 | Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |
-| Next: 3 User Stories per request (spike, ingestion 1:1 append, transformation: staging reload window → int → mart) | ⬜ Planned, see [docs/PHASES.md](docs/PHASES.md#next-phase-3-user-stories-per-request) |
+| Added: 3 User Stories per request (spike, ingestion non-prod + prod, transformation non-prod + prod) | 🟡 Drafted after the Data Team approves; checked offline end to end. Open: new dataset vs. change, when to skip ingestion, int/mart detail ([docs/PHASES.md](docs/PHASES.md#3-user-stories-per-request)) |
 
 ---
 
@@ -81,7 +81,7 @@ data-onboarding-agent/
 │   │       ├── feasibility.py #     per source: dbt model → landed → new job → new connection → gap
 │   │       ├── investigate.py #     web research for sources the platform can't onboard yet
 │   │       ├── approval.py    #     pause for the Data Team
-│   │       ├── draft_us.py    #     User Story (and the draft preview, template only)
+│   │       ├── draft_us.py    #     User Story (and the draft preview, template only) + the 3 User Stories (../stories.py)
 │   │       ├── summary.py     #     final summary + Teams card
 │   │       └── common.py      #     shared helpers (today, output folder)
 │   ├── repos/                 # knowledge from the ingestion + transformation repos (local checkout or GitHub)
