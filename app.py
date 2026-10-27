@@ -345,9 +345,16 @@ def _result(values: dict) -> tuple:
         return str(p) if p and p.exists() else None
 
     us, summary = path("user_story"), path("summary")
+    # The download: a zip with user_story.md and the 3 User Story files (older requests: user_story.md alone).
+    download = path("bundle") or us
     title = f"### ✅ {_esc(outputs.get('title') or values.get('request_id', ''))}\nUser Story and the 3 User Stories (spike, ingestion, transformation) created; the summary was sent to the Data Team."
-    preview = Path(us).read_text(encoding="utf-8") if us else ""
-    return title, preview, gr.update(value=us, visible=bool(us)), gr.update(value=summary, visible=bool(summary))
+    # The preview shows them together; each story is still its own file.
+    parts = [Path(us).read_text(encoding="utf-8")] if us else []
+    for story in outputs.get("stories") or []:
+        if (p := config.ROOT / story["file"]).exists():
+            parts.append(p.read_text(encoding="utf-8"))
+    preview = "\n\n---\n\n".join(parts)
+    return title, preview, gr.update(value=download, visible=bool(download)), gr.update(value=summary, visible=bool(summary))
 
 
 # Outputs of every chat handler, in this order:
@@ -818,7 +825,7 @@ def build_ui() -> gr.Blocks:
                         with gr.Group(visible=False, elem_classes="result-box") as result_box:
                             result_title = gr.Markdown(elem_classes="result-title")
                             with gr.Row():
-                                us_dl = gr.DownloadButton("⬇ User Story (.md)", variant="primary", size="sm", visible=False)
+                                us_dl = gr.DownloadButton("⬇ User Stories (.zip)", variant="primary", size="sm", visible=False)
                                 sum_dl = gr.DownloadButton("⬇ Summary (.md)", size="sm", visible=False)
                             with gr.Accordion("Preview User Story", open=False):
                                 result_preview = gr.Markdown(elem_classes="us-preview")
@@ -846,7 +853,7 @@ def build_ui() -> gr.Blocks:
                         review_dd = gr.Dropdown(label="Waiting for review", choices=[], scale=5)
                         review_refresh = gr.Button("↻ Refresh", scale=0, min_width=110)
                     review_msg = gr.Markdown()
-                    review_us = gr.DownloadButton("⬇ User Story (.md)", size="sm", visible=False)
+                    review_us = gr.DownloadButton("⬇ User Stories (.zip)", size="sm", visible=False)
                     with gr.Row(equal_height=False, visible=False) as review_panel:
                         with gr.Column(scale=1):
                             review_request = gr.HTML()

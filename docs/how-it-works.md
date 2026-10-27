@@ -144,7 +144,7 @@ Only Data Team accounts (`DATA_TEAM`) see the review tab. Requesters sign in wit
 
 The agent fills a fixed template: title, user story, description, sources and feasibility, proposed pipeline per source, acceptance criteria, risks, information sources, and (for unknown sources) web research plus questions for the Data Team. With an LLM, the title and description read better. Everything else is deterministic and cites the file in the ingestion or transformation repo it came from.
 
-Then the work itself, as **3 User Stories done in order** (each blocked by the one before), one file each to copy into the backlog and all three appended to `user_story.md`:
+Then the work itself, as **3 User Stories done in order** (each blocked by the one before), one file each, the only copy of each story, so each one is maintained (and copied into the backlog) on its own. `user_story.md` is their **parent**: the request, feasibility and research, with links to the 3:
 
 | # | User Story | Repo | Content |
 |---|---|---|---|
@@ -154,7 +154,7 @@ Then the work itself, as **3 User Stories done in order** (each blocked by the o
 
 The spike is always there, also when the data exists: a change such as new columns needs one too.
 
-Then it writes `summary.md` and posts **"Request approved — User Story ready"** to Teams, with the 3 User Stories listed in order. The requester gets **⬇ User Story** (all of it, including the 3 stories) / **⬇ Summary** downloads and a preview.
+Then it writes `summary.md` and posts **"Request approved — User Story ready"** to Teams, with the 3 User Stories listed in order. The requester gets **⬇ User Stories (.zip)** (the parent and the 3 story files) / **⬇ Summary** downloads, and a preview showing the parent and the 3 stories together.
 
 ## What gets written
 
@@ -164,10 +164,11 @@ outputs/REQ-20261023-d92104/
 ├── teams_messages.jsonl      # only if Teams is mocked or the webhook failed
 ├── source_notes_<src>.yaml   # only for sources the platform can't onboard yet (step 3b)
 ├── feasibility.json          # after the Data Team approves (step 6)
-├── user_story.md             # step 6: the request's User Story + the 3 User Stories
+├── user_story.md             # step 6: the parent, with links to the 3 User Stories
 ├── us_1_spike.md             # step 6
 ├── us_2_ingestion.md         # step 6
 ├── us_3_transformation.md    # step 6
+├── user_stories_<id>.zip     # step 6: the 4 files above, the UI download
 └── summary.md                # step 6
 ```
 

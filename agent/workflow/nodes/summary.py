@@ -35,7 +35,8 @@ def summary(state: dict) -> dict:
             *_questions(current_research(state)),
             "**User Stories** (in order):",
             *[f"{i}. {s['title']} — {s['file']}" for i, s in enumerate(outputs.get("stories") or [], 1)],
-            f"**Main User Story:** {outputs.get('user_story', '')}",
+            f"**Parent User Story:** {outputs.get('user_story', '')}",
+            f"**All of them (zip):** {outputs.get('bundle', '')}",
         ]
     )
     out = output_dir(state)

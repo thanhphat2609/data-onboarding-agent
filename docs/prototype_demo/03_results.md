@@ -16,7 +16,7 @@ Demo date: ____ · Presenter: ____ · Data Team reviewer: ____ · Mode: rule-bas
 | C | Request changes by the Data Team reaches the requester as a new draft | ☐ pass ☐ fail | |
 | C | No second "New data request" card after the re-approval | ☐ pass ☐ fail | |
 | D | "Request approved — User Story ready" card in Teams | ☐ pass ☐ fail | |
-| D | `outputs/<request_id>/` has the 7 files (incl. `us_1_spike.md`, `us_2_ingestion.md`, `us_3_transformation.md`), no `teams_messages.jsonl` | ☐ pass ☐ fail | |
+| D | `outputs/<request_id>/` has the 8 files (incl. `us_1_spike.md`, `us_2_ingestion.md`, `us_3_transformation.md` and `user_stories_<request_id>.zip`), no `teams_messages.jsonl` | ☐ pass ☐ fail | |
 | D | The 3 User Stories match how the Data Team splits the work (spike → ingestion → transformation, non-prod then prod) | ☐ pass ☐ fail | |
 | D | Session in PostgreSQL: `done`, `reviewed_by`, `review_action = approve` | ☐ pass ☐ fail | |
 | E | Clean source name, "Where does it come from?" asked on its own | ☐ pass ☐ fail ☐ skipped | |
