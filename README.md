@@ -39,7 +39,7 @@ Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
 | Added: docs links learned from approved requests (`source_docs`) | 🟡 Checked offline end to end: an approved request's links are listed first in the next one, even with no search results |
 | Added: requester approves the draft before the Data Team | 🟡 Checked offline end to end (graph + UI handlers); ⬜ click through in a browser |
 | Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |
-| Added: MySQL and REST API source types (ingestion's `mysql` and `rest_api` templates); a new API is a new connection, still researched on the web | 🟡 Checked offline (39 tests); the ingestion side ([ADR-0015](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0015-rest-api-source-via-redpanda.md)) is on its branch `feat/rest-api-source` until merged |
+| Added: MySQL and REST API source types (ingestion's `mysql` and `rest_api` templates); a new API is a new connection, still researched on the web | 🟡 Checked offline (39 tests); the ingestion side ([ADR-0015](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0015-rest-api-source-via-redpanda.md)) merged in [data-onboarding-ingestion#9](https://github.com/thanhphat2609/data-onboarding-ingestion/pull/9); ⬜ an API request in a codespace |
 | Added: 3 User Stories per request (spike, ingestion non-prod + prod, transformation non-prod + prod) | 🟡 Drafted after the Data Team approves, one file each, downloaded as one zip with their parent; checked offline end to end. Open: new dataset vs. change, when to skip ingestion, int/mart detail ([docs/phases.md](docs/phases.md#3-user-stories-per-request)) |
 
 ---
