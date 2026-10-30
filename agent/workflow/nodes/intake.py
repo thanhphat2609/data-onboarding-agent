@@ -72,15 +72,10 @@ def gap_question(gaps: list[dict], unclear: bool) -> str:
 
 
 def new_sources(request: dict) -> list[str]:
-    """Sources the platform can't onboard yet: not an onboarded system, no source template for their type
-    (the same test as the gap in feasibility)."""
+    """Sources new to the platform: those it can't onboard yet (the gap in feasibility) and new APIs, which the
+    `rest_api` template onboards but whose auth and pagination still have to be found (repos.needs_research)."""
     kb = repos.get()
-    out = []
-    for source in request.get("sources") or []:
-        system, stype = repos.parse_source(source, kb)
-        if system not in kb.systems() and not (stype and stype in kb.templates):
-            out.append(source)
-    return out
+    return [s for s in request.get("sources") or [] if repos.needs_research(*repos.parse_source(s, kb), kb)]
 
 
 def _field_question(field: str, request: dict) -> str:

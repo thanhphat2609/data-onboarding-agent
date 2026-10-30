@@ -1,18 +1,21 @@
-"""Research sources the platform can't onboard yet (web docs → draft source notes + questions for the Data Team).
+"""Research sources new to the platform: ones it can't onboard yet, and new APIs (rest_api template), whose auth and
+pagination still have to be found (web docs → draft source notes + questions for the Data Team).
 
 Runs after feasibility, before approval, so the reviewer sees the findings. Each source is researched
 once per request. Findings are unverified and never change the feasibility result.
 """
+from agent import repos
 from agent.workflow.nodes.common import output_dir, rel
 from agent.research.investigate import draft_source_notes, investigate, slug
 
 
 def investigate_source(state: dict) -> dict:
     research = dict(state.get("research") or {})
+    kb = repos.get()
     todo = [
         s["source"]
         for s in state["feasibility"]["sources"]
-        if s.get("recommendation") is None and s["source"] not in research
+        if repos.needs_research(*repos.parse_source(s["source"], kb), kb) and s["source"] not in research
     ]
     if not todo:
         return {}

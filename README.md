@@ -19,7 +19,7 @@ Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
 
 ## Status
 
-> Updated: 2026-10-27. Details per item: [docs/phases.md](docs/phases.md).
+> Updated: 2026-10-30. Details per item: [docs/phases.md](docs/phases.md).
 
 | Phase | Status |
 |---|---|
@@ -35,10 +35,11 @@ Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
 | Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1. Every prod setting in GitHub secrets/variables, `.env` written by the Deploy workflow |
 | Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches ran in a codespace (2026-10-27) |
 | Added: steadier web research (known official docs, stricter on-topic check, 7-day cache, engine top-up) | 🟡 Checked offline, incl. a second run from the cache; a real double run in a codespace pending |
-| Added: tests (`pytest`, offline, run by CI on every push) | ✅ 32 tests: intake, the 4 kinds of feasibility + the gap, outputs (3 User Stories + zip), web research, learned links, `render_env.py` |
+| Added: tests (`pytest`, offline, run by CI on every push) | ✅ 39 tests: intake, the 4 kinds of feasibility + the gap, source types (MySQL, REST API), outputs (3 User Stories + zip), web research, learned links, `render_env.py` |
 | Added: docs links learned from approved requests (`source_docs`) | 🟡 Checked offline end to end: an approved request's links are listed first in the next one, even with no search results |
 | Added: requester approves the draft before the Data Team | 🟡 Checked offline end to end (graph + UI handlers); ⬜ click through in a browser |
 | Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |
+| Added: MySQL and REST API source types (ingestion's `mysql` and `rest_api` templates); a new API is a new connection, still researched on the web | 🟡 Checked offline (39 tests); the ingestion side ([ADR-0015](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0015-rest-api-source-via-redpanda.md)) is on its branch `feat/rest-api-source` until merged |
 | Added: 3 User Stories per request (spike, ingestion non-prod + prod, transformation non-prod + prod) | 🟡 Drafted after the Data Team approves, one file each, downloaded as one zip with their parent; checked offline end to end. Open: new dataset vs. change, when to skip ingestion, int/mart detail ([docs/phases.md](docs/phases.md#3-user-stories-per-request)) |
 
 ---
@@ -48,7 +49,7 @@ Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
 ```
 intake ⇄ ask_user ─▶ catalog_check ─▶ feasibility ──gap──▶ intake
                                           │
-                       investigate_source (sources the platform can't onboard yet)
+                       investigate_source (sources new to the platform: no template yet, or a new API)
                                           │
        requester_review (requester checks the draft) ──change──▶ intake
                                           │ approve draft
@@ -126,7 +127,7 @@ There is no sample data in this repo. The agent reads the two platform repos on 
 
 | Repo | Files read | Tells the agent |
 |---|---|---|
-| data-onboarding-ingestion | `code/templates/sources/*.yaml` | Source types that can be onboarded (e.g. `sqlserver`) |
+| data-onboarding-ingestion | `code/templates/sources/*.yaml` | Source types that can be onboarded (e.g. `sqlserver`, `mysql`, `rest_api`) |
 | | `pipelines/connections/*.yaml` | Systems already onboarded (e.g. `crm`) |
 | | `pipelines/jobs/*.yaml` | Tables already landing in the lake (`<system>/<schema>/<table>`) |
 | data-onboarding-transformation | `models/**/*.yml` (or `target/manifest.json`) | dbt models that already exist |
@@ -153,7 +154,7 @@ python -m pip install pytest
 python -m pytest -q tests          # 34 tests, ~5 s, offline: no network, LLM or database server
 ```
 
-CI runs the same tests on every push. They read small copies of the two platform repos in `tests/fixtures/` (one `sqlserver` template, the `crm` connection and job, two dbt models) and fake the web search, so they never depend on GitHub or a search engine. Add or update a test with every fix or feature (`CLAUDE.md`).
+CI runs the same tests on every push. They read small copies of the two platform repos in `tests/fixtures/` (the `sqlserver`, `mysql` and `rest_api` templates, the `crm` connection and job, two dbt models) and fake the web search, so they never depend on GitHub or a search engine. Add or update a test with every fix or feature (`CLAUDE.md`).
 
 ## Run with Docker / GitHub Codespaces
 
@@ -170,7 +171,7 @@ For settings (`.env` / Codespaces secrets), where data is stored, port visibilit
 
 Web research uses two tools from [agent/research/websearch/](agent/research/websearch/), a Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): **`web_search`** (title, URL, snippet per result) and **`web_fetch`** (main text of one page). Search goes to the self-hosted **SearXNG** container first (Docker setups, `SEARXNG_URL`), then to Brave (headless browser) and DuckDuckGo (`ddgs`); no API keys. Pages are read over HTTP with **Trafilatura** for the main text, or in a headless browser when they need JavaScript.
 
-For each source the platform can't onboard yet, research runs in up to 2 rounds (one search per topic, then follow-ups on the docs site for what is still missing) and hands the Data Team the **top 5 links**, key passages, questions and draft source notes. Links from earlier **approved** requests for the same source are learned and always among the links (`source_docs` table), plus a few official docs listed in advance ([docs_hints.yaml](agent/research/docs_hints.yaml)); results that only mention the source in passing are dropped; searches and pages are cached for 7 days, so a second request for the same source gets the same links. All of it is unverified and never changes the feasibility result ([details](docs/architecture.md#web-search)).
+For each source new to the platform (one it can't onboard yet, or a new REST API: the `rest_api` template onboards it, but its auth, pagination and limits still have to be found), research runs in up to 2 rounds (one search per topic, then follow-ups on the docs site for what is still missing) and hands the Data Team the **top 5 links**, key passages, questions and draft source notes. Links from earlier **approved** requests for the same source are learned and always among the links (`source_docs` table), plus a few official docs listed in advance ([docs_hints.yaml](agent/research/docs_hints.yaml)); results that only mention the source in passing are dropped; searches and pages are cached for 7 days, so a second request for the same source gets the same links. All of it is unverified and never changes the feasibility result ([details](docs/architecture.md#web-search)).
 
 - **Headless browser (optional):** `python -m playwright install chromium` once (the Playwright package is in `requirements.txt`). Without it, Brave is skipped (search uses SearXNG, then DuckDuckGo through `ddgs`) and JavaScript-only pages stay unreadable. Docker: `WITH_BROWSER=true`.
 - **MCP server** with the same two tools (`web_search`, `web_fetch`), for LM Studio, Claude Desktop or other MCP clients:

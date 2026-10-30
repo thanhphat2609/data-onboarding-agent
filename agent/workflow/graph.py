@@ -3,7 +3,7 @@
     intake ⇄ ask_user          (ask until all fields are filled / gaps are resolved)
     intake → catalog_check → feasibility
     feasibility ─gap→ intake
-    feasibility → investigate_source → requester_review ─change→ intake   (web research only for sources the platform can't onboard yet)
+    feasibility → investigate_source → requester_review ─change→ intake   (web research only for sources new to the platform: no template yet, or a new API)
     requester_review ─approve draft→ notify (first time only) → approval ─edit→ intake
     approval ─approve→ draft_us → summary → END
 """

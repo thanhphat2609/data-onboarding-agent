@@ -72,7 +72,7 @@ The agent needs **7 details**:
 | Grain | one row per customer |
 | Used by | Sales team, Power BI dashboard |
 
-**Where does it come from?** When a source is one the platform can't onboard yet, the next question, asked on its own, is where it comes from: the vendor/app and how the data is reached (API, database, file export…), with a docs link if the requester has one. The answer goes into the User Story for the Data Team; a pasted link is read first by the web research, and a known vendor name ("Google") is added to the search name.
+**Where does it come from?** When a source is new to the platform (one it can't onboard yet, or a new API such as "Google Search Console API"), the next question, asked on its own, is where it comes from: the vendor/app and how the data is reached (API, database, file export…), with a docs link if the requester has one. The answer goes into the User Story for the Data Team; a pasted link is read first by the web research, and a known vendor name ("Google") is added to the search name.
 
 After each message the agent extracts what it can (rules first; an LLM if configured), validates it, and asks for **at most 3 missing details per turn**. The answers can be numbered (`1. …`, one per line), labelled (`eta: 2026-11-30`) or both (`3. Grain: date x page` counts as the grain, without the label). A greeting or lead-in at the start of the first message is not part of the description: "Hi, I want to onboard Google Search Console" becomes *Onboard Google Search Console*, which the User Story's title and sentence use. The go-live date can also be relative: "in 2 weeks", "end of next month", "2 tuần nữa"; for a range such as "in 2 or 3 weeks" the agent takes the earlier date. The agent confirms the date it computed. Invalid values, such as an ETA in the past, are asked again with a ⚠️ note. If nothing in an answer matches the questions, the agent says so and asks again. The **Your request** card on the right fills in as details arrive.
 
@@ -87,7 +87,7 @@ For each source, the agent looks in the two platform repos, from least to most w
 | 1 | A dbt model already has this data | data-onboarding-transformation `models/` | **Existing dbt model**: reuse it | "current CRM customers" → `crm_customers_current` |
 | 2 | The table already lands in the lake | data-onboarding-ingestion `pipelines/jobs/` | **Landed, needs dbt model** | a CRM table with a job but no model yet |
 | 3 | The system is onboarded, but not this table | `pipelines/connections/` | **New ingestion job** on that connection, then dbt models | "CRM segments" → job on `crm-sqlserver-nonprod` |
-| 4 | The source type is supported | `code/templates/sources/` | **New connection** from that template, a job, dbt models | "HR on SQL Server" → `sqlserver` template |
+| 4 | The source type is supported | `code/templates/sources/` | **New connection** from that template, a job, dbt models | "HR on SQL Server" → `sqlserver` template; "Shop on MySQL" → `mysql`; "Google Search Console API" → `rest_api` (any REST API; the connection needs its base URL, auth and pagination, so it is still researched, step 3b) |
 | 5 | None of the above | | **Gap**: the platform can't onboard it yet | "ERP on PostgreSQL" (no PostgreSQL template yet) |
 
 The check works per table: the agent matches the tables the request names ("customers") against job tables and model names. If the request names no table the platform knows, it doesn't assume one exists and adds a risk asking the Data Team to confirm the tables.
@@ -101,9 +101,9 @@ The result is **Feasible**, **Feasible with risks**, or **Gap found**.
 
 **When there's a gap**, the request goes back to the requester (the step tracker shows an amber **!**). They can reply `ok` to continue (the source stays *Needs investigation*), optionally pasting a link to the source's API docs, or name another source.
 
-### 3b. Sources the platform can't onboard yet: `investigate_source`
+### 3b. Sources new to the platform: `investigate_source`
 
-If the requester accepted such a source, the agent looks up public documentation, in rounds like a person would:
+For a source the platform can't onboard yet (if the requester accepted the gap), and for a new REST API (a new `rest_api` connection: no gap, but its auth, pagination and limits still have to be found), the agent looks up public documentation, in rounds like a person would:
 
 1. **Round 1:** links the requester pasted are read first, then the source's known docs, which are always listed: links from earlier requests for the same source that the Data Team approved (marked *approved before*), and a few official pages listed in advance. Then one search per topic (access/export, history/retention, rate limits, auth) plus the official docs, with the plain source name (no quotes). Search goes to the self-hosted SearXNG container first, then to Brave and DuckDuckGo; no API keys. Results whose title or URL doesn't name the source (a Google Analytics page that only mentions Search Console), and forum/video sites, are dropped; so is a page whose text never names it. Results are cached for 7 days, so asking about the same source again gives the same links, faster.
 2. Reads the best pages (the source's own docs site first) over HTTP, or in the headless browser when a page needs JavaScript, and keeps the most useful sentences about history/retention, quotas, auth and access methods, those with a number first.
@@ -149,7 +149,7 @@ Then the work itself, as **3 User Stories done in order** (each blocked by the o
 | # | User Story | Repo | Content |
 |---|---|---|---|
 | 1/3 | **Spike** | none | What is known (recommendation, origin, top links, draft source notes) and what to find out: source and access, freshness and **update latency**, history back to the start date, grain and fields, strengths, weaknesses. Done when there is a go/no-go, an access route and the update latency |
-| 2/3 | **Ingestion** | data-onboarding-ingestion | Per source, from the feasibility result: a source template, a connection, a job, or nothing new (data already lands; re-ingest only if columns are missing). Lands 1:1, append-only. **Non-prod** (codespace, run by hand) then **prod** (pull request to `pipelines/`, a new secret in GitHub + Deploy, backfill) |
+| 2/3 | **Ingestion** | data-onboarding-ingestion | Per source, from the feasibility result: a source template, a connection, a job, or nothing new (data already lands; re-ingest only if columns are missing). For an API: a `rest_api` connection (base URL, auth, token as `env://`) and a job (endpoint, pagination, Flink SQL over the table `landing`). Lands 1:1, append-only. **Non-prod** (codespace, run by hand) then **prod** (pull request to `pipelines/`, a new secret in GitHub + Deploy, backfill) |
 | 3/3 | **Transformation** | data-onboarding-transformation | **Staging** reloading the last N days (N = update latency from 1/3, since ingestion only appends), **int** at the requested grain, **mart** with `_dbt_loaded_at` / `_dbt_run_date`; or reuse the existing dbt model. Tests and a freshness test. **Non-prod** (`dbt build`, reconcile) then **prod** |
 
 The spike is always there, also when the data exists: a change such as new columns needs one too.
@@ -162,7 +162,7 @@ Then it writes `summary.md` and posts **"Request approved — User Story ready"*
 outputs/REQ-20261023-d92104/
 ├── request.json              # when the requester approves the draft (step 4)
 ├── teams_messages.jsonl      # only if Teams is mocked or the webhook failed
-├── source_notes_<src>.yaml   # only for sources the platform can't onboard yet (step 3b)
+├── source_notes_<src>.yaml   # only for sources new to the platform (step 3b)
 ├── feasibility.json          # after the Data Team approves (step 6)
 ├── user_story.md             # step 6: the parent, with links to the 3 User Stories
 ├── us_1_spike.md             # step 6
