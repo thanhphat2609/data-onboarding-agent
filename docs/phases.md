@@ -147,6 +147,13 @@ Step 1 of the agreed order (draft approval → 3 User Stories → reopen / linke
 - 🟡 UI: a **Draft** step in the tracker, the draft panel, session status "waiting for the requester to approve the draft"; `evaluate.py` approves drafts by default (`draft:` in a sample to script changes)
 - Checked offline: graph end to end (draft → change → new draft → approve → Teams once → Data Team edit → new draft → approve → done), the UI handlers (approve button, question, "no", change), the Google Search Console path with web research. ⬜ Click through in a browser; ⬜ in Docker with PostgreSQL
 
+## Fixed: systems known only from dbt models 🟡 (2026-10-30)
+data-onboarding-ingestion moved its test sources to `infrastructure/non-prod/sample_database/`; its `pipelines/` now starts empty and connections are created during its demo. The agent then knew no system at all:
+- ✅ "Current CRM customers" still found `crm_customers_current`, but asked "where does CRM come from?" and ran the web research on CRM. Now a system with dbt models counts as known (`Knowledge.systems()`).
+- ✅ "source: CRM on SQL Server" was cut to `crm`, losing the type. A source answer that names a type keeps it, so a system known only from dbt gets a **new connection** from that template.
+- ✅ The gap for a table of such a system says why: "`crm` has dbt models but no connection in the ingestion repo; name its source type".
+- Checked offline: 41 tests, two new ones against an ingestion fixture with an empty `pipelines/` (the happy path without origin question or research; "CRM on SQL Server" → `sqlserver` connection; the gap message). The demo docs say what to expect with and without a `crm` connection. ⬜ In a codespace against the real repos, once the ingestion change is merged.
+
 ## Added: MySQL and REST API source types 🟡 (2026-10-30)
 - ✅ **MySQL wasn't recognised.** data-onboarding-ingestion has a `mysql@1` template, but `TYPE_ALIASES` had no `mysql`, so "Shop on MySQL" was a gap instead of a new connection. Added.
 - 🟡 **REST APIs** ([agent/repos/__init__.py](../agent/repos/__init__.py)): `api`, `rest api`, `http api`, `json api` → the ingestion `rest_api` template (its [ADR-0015](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0015-rest-api-source-via-redpanda.md): an Airflow `fetch` task lands the API's records on Redpanda, and Flink reads the run's offsets as the bounded table `landing`, so the Flink side is the same for every API). "Google Search Console API" is now a **new connection** (`rest_api`), not a gap.

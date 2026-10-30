@@ -19,7 +19,7 @@ Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
 
 ## Status
 
-> Updated: 2026-10-30. Details per item: [docs/phases.md](docs/phases.md).
+> Updated: 2026-10-30 (later). Details per item: [docs/phases.md](docs/phases.md).
 
 | Phase | Status |
 |---|---|
@@ -35,11 +35,12 @@ Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
 | Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1. Every prod setting in GitHub secrets/variables, `.env` written by the Deploy workflow |
 | Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches ran in a codespace (2026-10-27) |
 | Added: steadier web research (known official docs, stricter on-topic check, 7-day cache, engine top-up) | 🟡 Checked offline, incl. a second run from the cache; a real double run in a codespace pending |
-| Added: tests (`pytest`, offline, run by CI on every push) | ✅ 39 tests: intake, the 4 kinds of feasibility + the gap, source types (MySQL, REST API), outputs (3 User Stories + zip), web research, learned links, `render_env.py` |
+| Added: tests (`pytest`, offline, run by CI on every push) | ✅ 41 tests: intake, the 4 kinds of feasibility + the gap, source types (MySQL, REST API), an empty ingestion `pipelines/`, outputs (3 User Stories + zip), web research, learned links, `render_env.py` |
 | Added: docs links learned from approved requests (`source_docs`) | 🟡 Checked offline end to end: an approved request's links are listed first in the next one, even with no search results |
 | Added: requester approves the draft before the Data Team | 🟡 Checked offline end to end (graph + UI handlers); ⬜ click through in a browser |
 | Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |
 | Added: MySQL and REST API source types (ingestion's `mysql` and `rest_api` templates); a new API is a new connection, still researched on the web | 🟡 Checked offline (39 tests); the ingestion side ([ADR-0015](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0015-rest-api-source-via-redpanda.md)) merged in [data-onboarding-ingestion#9](https://github.com/thanhphat2609/data-onboarding-ingestion/pull/9); ⬜ an API request in a codespace |
+| Fixed: a system known only from dbt models (ingestion's `pipelines/` now starts empty) is not treated as new | 🟡 Checked offline (41 tests); ⬜ in a codespace against the real repos |
 | Added: 3 User Stories per request (spike, ingestion non-prod + prod, transformation non-prod + prod) | 🟡 Drafted after the Data Team approves, one file each, downloaded as one zip with their parent; checked offline end to end. Open: new dataset vs. change, when to skip ingestion, int/mart detail ([docs/phases.md](docs/phases.md#3-user-stories-per-request)) |
 
 ---

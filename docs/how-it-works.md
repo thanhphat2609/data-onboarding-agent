@@ -86,7 +86,7 @@ For each source, the agent looks in the two platform repos, from least to most w
 |---|---|---|---|---|
 | 1 | A dbt model already has this data | data-onboarding-transformation `models/` | **Existing dbt model**: reuse it | "current CRM customers" → `crm_customers_current` |
 | 2 | The table already lands in the lake | data-onboarding-ingestion `pipelines/jobs/` | **Landed, needs dbt model** | a CRM table with a job but no model yet |
-| 3 | The system is onboarded, but not this table | `pipelines/connections/` | **New ingestion job** on that connection, then dbt models | "CRM segments" → job on `crm-sqlserver-nonprod` |
+| 3 | The system is onboarded, but not this table | `pipelines/connections/` | **New ingestion job** on that connection, then dbt models | "CRM segments" → job on `crm-sqlserver-nonprod` (when that connection exists; a system known only from dbt models needs its source type, "CRM on SQL Server", for a new connection) |
 | 4 | The source type is supported | `code/templates/sources/` | **New connection** from that template, a job, dbt models | "HR on SQL Server" → `sqlserver` template; "Shop on MySQL" → `mysql`; "Google Search Console API" → `rest_api` (any REST API; the connection needs its base URL, auth and pagination, so it is still researched, step 3b) |
 | 5 | None of the above | | **Gap**: the platform can't onboard it yet | "ERP on PostgreSQL" (no PostgreSQL template yet) |
 

@@ -75,10 +75,13 @@ def assess_source(source: str, request: dict, models: list[dict], today, kb: rep
     elif stype and stype in kb.templates:
         rec = {"kind": "new_connection", "name": stype, "ref": _repo_ref(config.INGESTION_REPO, kb.templates[stype]["file"])}
     else:
-        why = (
-            f"`{stype}` has no source template in the ingestion repo"
-            if stype else "it is not an onboarded system and no supported source type was named"
-        )
+        if stype:
+            why = f"`{stype}` has no source template in the ingestion repo"
+        elif system in kb.systems():
+            why = (f"`{system}` has dbt models but no connection in the ingestion repo; name its source type "
+                   f"(e.g. \"{system} on SQL Server\") to onboard it")
+        else:
+            why = "it is not an onboarded system and no supported source type was named"
         result["gap"] = {
             "type": "unknown_source",
             "source": source,
