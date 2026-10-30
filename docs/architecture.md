@@ -36,12 +36,12 @@ flowchart LR
 | Sessions | [agent/workflow/sessions.py](../agent/workflow/sessions.py) | `SessionStore`: one row per thread_id (owner, who typed it, status, reviewer) in the checkpointer's database, so lists and ownership checks are plain SQL |
 | Graph | [agent/workflow/graph.py](../agent/workflow/graph.py) | Wires the nodes and routing functions; compiles with the PostgreSQL checkpointer (`DATABASE_URL`) or SQLite |
 | Nodes | [agent/workflow/nodes/](../agent/workflow/nodes/) | One file per step (see [The graph](#the-graph)) |
-| State | [agent/state.py](../agent/state.py) | `AgentState` TypedDict, the 7 required request fields, the questions for each field, plus `source_origin` (asked only for sources the platform can't onboard yet, not one of the 7) |
+| State | [agent/state.py](../agent/state.py) | `AgentState` TypedDict, the 7 required request fields, the questions for each field, plus `source_origin` (asked only for sources new to the platform: no template yet, or a new API; not one of the 7) |
 | Login | [agent/auth.py](../agent/auth.py) | Data Team accounts from `ACCOUNTS`, requester self-registration (scrypt hashes in the `requesters` table), roles (see [Web UI](#web-ui)) |
 | Extraction | [agent/workflow/extraction.py](../agent/workflow/extraction.py) | Rule-based field extraction (English + Vietnamese keywords) and validation; source names are cleaned (lead-ins such as "product called:" and guesses in parentheses dropped; a company name alone asks which product); LLM extraction when a model is configured |
 | Repositories | [agent/repos/__init__.py](../agent/repos/__init__.py), [agent/repos/github.py](../agent/repos/github.py), [agent/repos/dbt_project.py](../agent/repos/dbt_project.py) | Read the two repos (local checkout or GitHub) into one cached `Knowledge`: source templates, connections, jobs, dbt models |
 | Knowledge | [agent/repos/lookup.py](../agent/repos/lookup.py) | `lookup_source(system)`, `search_models(query)` (token-overlap score) over the repos |
-| Web research | [agent/research/investigate.py](../agent/research/investigate.py) | For sources the platform can't onboard yet: research in rounds, top 5 links, key passages, draft source notes, questions for the Data Team (see [Web search](#web-search)) |
+| Web research | [agent/research/investigate.py](../agent/research/investigate.py) | For sources new to the platform (no template yet, or a new API, `repos.needs_research`): research in rounds, top 5 links, key passages, draft source notes, questions for the Data Team (see [Web search](#web-search)) |
 | Web search | [agent/research/websearch/](../agent/research/websearch/) | Python port of [web-search-mcp](https://github.com/mrkrsl/web-search-mcp) (MIT): search through the self-hosted SearXNG container first, then Brave (in an optional headless browser) and DuckDuckGo (`ddgs`); page text with Trafilatura over HTTP, with a headless-browser fallback; cut down to two tools, `web_search` and `web_fetch`, also served by an MCP server (`python -m agent.research.websearch.mcp_server`) |
 | LLM client | [agent/llm/client.py](../agent/llm/client.py), [agent/llm/prompts/](../agent/llm/prompts/) | Optional Ollama client (API key support for the Colab proxy); prompts as Markdown files |
 | Teams | [agent/integrations/teams.py](../agent/integrations/teams.py) | Adaptive Card to a Workflows webhook; without a URL (or on failure) writes `teams_messages.jsonl` |
@@ -70,12 +70,12 @@ flowchart TD
 
 | Node | File | What it does | Writes to state |
 |---|---|---|---|
-| `intake` | [intake.py](../agent/workflow/nodes/intake.py) | Extracts fields from new user messages, validates them (dates, ETA after today, refresh frequency) and decides what to ask next: missing fields (max 3 per turn), "Where does it come from?" on its own right after a source the platform can't onboard yet, or a gap to resolve | `request`, `missing_fields`, `errors`, `gap`, `accepted_gaps`, `pending_question` |
+| `intake` | [intake.py](../agent/workflow/nodes/intake.py) | Extracts fields from new user messages, validates them (dates, ETA after today, refresh frequency) and decides what to ask next: missing fields (max 3 per turn), "Where does it come from?" on its own right after a source new to the platform (no template yet, or a new API), or a gap to resolve | `request`, `missing_fields`, `errors`, `gap`, `accepted_gaps`, `pending_question` |
 | `ask_user` | [intake.py](../agent/workflow/nodes/intake.py) | `interrupt()`: pauses the graph until the requester answers | `messages` |
 | `notify` | [notify.py](../agent/workflow/nodes/notify.py) | Once per request, after the requester approved the draft: writes `request.json`, posts "New data request" (with the feasibility result) to Teams | `thread_ref` |
 | `catalog_check` | [catalog_check.py](../agent/workflow/nodes/catalog_check.py) | Searches the dbt models of the transformation repo per source system | `existing_models` |
 | `feasibility` | [feasibility.py](../agent/workflow/nodes/feasibility.py) | Per source and table: existing dbt model → landed by an ingestion job → system onboarded (new job) → supported source type (new connection) → otherwise a gap. Flags tight ETAs and snapshot history | `feasibility`, `gap` |
-| `investigate_source` | [investigate.py](../agent/workflow/nodes/investigate.py) | Only for sources the platform can't onboard yet: web research and draft source notes (advisory) | `research` |
+| `investigate_source` | [investigate.py](../agent/workflow/nodes/investigate.py) | Only for sources new to the platform: no template yet (a gap), or a new API (a `rest_api` connection, whose auth and pagination the research helps find). Web research and draft source notes (advisory) | `research` |
 | `requester_review` | [requester_review.py](../agent/workflow/nodes/requester_review.py) | `interrupt()` with the **draft**: the User Story from the template, no LLM (`draft_preview` in draft_us.py), split into the requester's part (User Story, acceptance criteria, description) and technical details. Approve → Data Team; a change goes back to intake and a new draft follows | `draft_approved`, `messages` |
 | `approval` | [approval.py](../agent/workflow/nodes/approval.py) | `interrupt()`: pauses until the Data Team approves or requests changes | `approved`, `review_comment` |
 | `draft_us` | [draft_us.py](../agent/workflow/nodes/draft_us.py) | User Story from a fixed template (LLM only writes title/description), plus the **3 User Stories** done in order ([stories.py](../agent/workflow/stories.py), deterministic): 1/3 spike, 2/3 ingestion (non-prod, then prod), 3/3 transformation (staging reload window, int, mart; non-prod, then prod). Writes `feasibility.json`, `us_1_spike.md`, `us_2_ingestion.md`, `us_3_transformation.md` (the only copy of each story), `user_story.md` (their parent: the request, feasibility and research, with links to the 3) and `user_stories_<request_id>.zip` (all four, the UI download) | `outputs` (`stories`: title + file each) |
@@ -103,7 +103,7 @@ The graph stops in exactly three places, all with LangGraph's `interrupt()`:
 | `missing_fields`, `errors` | What is still missing or invalid |
 | `gap`, `accepted_gaps` | Open feasibility gaps (`date_range`, `unknown_source`) and the ones the requester accepted |
 | `existing_models`, `feasibility` | dbt model matches and the per-source assessment with recommendation and risks |
-| `research` | Web research findings per source the platform can't onboard yet |
+| `research` | Web research findings per source new to the platform |
 | `draft_approved` | The requester approved the draft (then it goes to the Data Team) |
 | `approved`, `review_comment` | The Data Team's decision |
 | `outputs` | Paths of the generated files and the User Story title |
@@ -123,7 +123,7 @@ One chat session = one LangGraph `thread_id`. Every step is checkpointed (Postgr
 
 | Repo | Files | Used for |
 |---|---|---|
-| data-onboarding-ingestion | `code/templates/sources/*.yaml` | Source types that can be onboarded (`new_connection`) |
+| data-onboarding-ingestion | `code/templates/sources/*.yaml` | Source types that can be onboarded (`new_connection`). The type is read from the source's name ([agent/repos/__init__.py](../agent/repos/__init__.py) `TYPE_ALIASES`): `sql server`, `postgres`, `mysql`, `bigquery`, and `api` / `rest api` → `rest_api` (ingestion's [ADR-0015](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0015-rest-api-source-via-redpanda.md): Airflow lands the API's records on Redpanda, Flink reads them as the table `landing`) |
 | | `pipelines/connections/*.yaml` | Systems already onboarded (`new_job`); system = system of its jobs, else the first part of the name (`crm-sqlserver-nonprod` → `crm`) |
 | | `pipelines/jobs/*.yaml` | Tables landing in the lake, from `sink.params.path` = `<system>/<schema>/<table>` (`landed`) |
 | data-onboarding-transformation | `models/**/*.yml`, or `target/manifest.json` if committed | dbt models (`existing_model`); system from `meta.source`, `stg_<system>__…` or the folder `models/<layer>/<system>/` |
@@ -192,7 +192,7 @@ The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks
 | `agent/ui/` | The Gradio web UI: `views.py` (HTML pieces), `handlers.py` (event handlers + the shared `AgentRunner`), `style.py` (theme, CSS), `layout.py` (tabs, wiring, `launch()`) |
 | `agent/workflow/` | The LangGraph flow: `graph.py`, `runner.py`, `sessions.py` (sessions table), `extraction.py`, `followup.py` (messages while waiting for the Data Team), `evaluate.py` (replay past requests), `stories.py` (the 3 User Stories) and `nodes/` (one module per step) |
 | `agent/repos/` | Knowledge from the two platform repos: loading, GitHub access, dbt parsing, lookups |
-| `agent/research/` | Web research for sources the platform can't onboard yet (`investigate.py`, with `cache.py`, `learned.py` and the optional `docs_hints.yaml`), and the `websearch/` port with its two tools: `web_search` (`engines.py`) and `web_fetch` (`content.py`, `extract.py`), plus `browser.py`, `ratelimit.py`, `models.py` and `mcp_server.py` |
+| `agent/research/` | Web research for sources new to the platform (`investigate.py`, with `cache.py`, `learned.py` and the optional `docs_hints.yaml`), and the `websearch/` port with its two tools: `web_search` (`engines.py`) and `web_fetch` (`content.py`, `extract.py`), plus `browser.py`, `ratelimit.py`, `models.py` and `mcp_server.py` |
 | `agent/llm/` | Optional Ollama client and its prompts |
 | `agent/integrations/` | Teams webhook |
 | `tests/` | `pytest`, offline, run by CI ([tests/README.md](../tests/README.md)): intake, whole requests through the graph against `tests/fixtures/` (small copies of the two platform repos), the outputs, web research with a fake engine, `render_env.py`, the UI. Not in the Docker image |

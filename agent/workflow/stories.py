@@ -63,7 +63,7 @@ def _spike(state: dict, research: dict) -> list[str]:
             lines.append(f"- System onboarded: connection `{rec['name']}`{_ref(rec)}; the table isn't ingested yet.")
         else:
             lines.append(f"- Supported source type: template `{rec['name']}`{_ref(rec)}; no connection yet.")
-        if request.get("source_origin") and rec is None:
+        if request.get("source_origin") and (rec is None or rec["name"] == "rest_api"):
             lines.append(f"- Where it comes from (requester): {request['source_origin']}")
         f = research.get(src["source"]) or {}
         for link in (f.get("links") or [])[:3]:
@@ -116,6 +116,15 @@ def _ingestion_steps(request: dict, src: dict) -> list[str]:
         ]
     if rec["kind"] == "new_job":
         return [f"Add a job `pipelines/jobs/{system}-<table>-{freq}.yaml` on connection `{rec['name']}` with the needed `SELECT`."]
+    if rec["name"] == "rest_api":
+        # Ingestion ADR-0015: Airflow's fetch task lands the API's records on Redpanda, Flink reads them as `landing`.
+        return [
+            f"Onboard a connection `pipelines/connections/{system}-<env>.yaml` from the `rest_api` source template: "
+            "`base_url`, `auth`, and the token as `env://` (from the spike's notes).",
+            f"Add a job `pipelines/jobs/{system}-<endpoint>-{freq}.yaml` with `endpoint`, `records_path` and "
+            "`pagination` from the API docs. Its query is Flink SQL over the table `landing`; keep `payload` (the "
+            "record's JSON) so a changed API field never breaks the run.",
+        ]
     return [
         f"Onboard a connection `pipelines/connections/{system}-<env>.yaml` from the `{rec['name']}` source template "
         "(read-only login, secret as `env://`).",

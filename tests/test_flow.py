@@ -4,7 +4,7 @@ import zipfile
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
-from agent import config
+from agent import config, repos
 from agent.workflow.evaluate import run_sample
 from agent.workflow.runner import AgentRunner
 
@@ -57,3 +57,32 @@ def test_outputs_after_approval():
     parent = (folder / "user_story.md").read_text()
     assert "(us_1_spike.md)" in parent and "## To find out" not in parent  # links, not copies
     assert [s["title"].split("] ")[1].split(":")[0] for s in outputs["stories"]] == ["1/3 Spike", "2/3 Ingestion", "3/3 Transformation"]
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Shop on MySQL", ("shop", "mysql")),
+    ("ERP on PostgreSQL", ("erp", "postgresql")),
+    ("Google Search Console API", ("google search console", "rest_api")),
+    ("CRM", ("crm", None)),  # a known system wins
+])
+def test_source_types(text, expected):
+    assert repos.parse_source(text) == expected
+
+
+def test_api_source_is_a_new_connection_and_still_researched():
+    # The rest_api template onboards any REST API (ingestion ADR-0015), so this is no gap. The origin question and
+    # the web research still run: auth and pagination are what the connection and the job need.
+    runner = AgentRunner(checkpointer=InMemorySaver())
+    result = run_sample(sample("dataset: Search Console clicks per page\nsource: Google Search Console API",
+                               ["Google, through the Search Console API", DETAILS, DETAILS]), runner)
+    obs = result["observed"]
+    assert obs["status"] == "done", result
+    assert not obs.get("gap_types")
+    state = runner.state(runner.sessions.recent(limit=1)[0]["thread_id"])
+    src = state["feasibility"]["sources"][0]
+    assert src["recommendation"]["kind"] == "new_connection" and src["recommendation"]["name"] == "rest_api"
+    assert state["request"]["source_origin"] == "Google, through the Search Console API"
+    assert list(state["research"]) == [src["source"]]
+    folder = config.ROOT / obs["outputs"]["user_story"]
+    ingestion = (folder.parent / "us_2_ingestion.md").read_text()
+    assert "`rest_api` source template" in ingestion and "Flink SQL over the table `landing`" in ingestion

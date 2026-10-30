@@ -29,8 +29,13 @@ INGESTION_FILES = ["code/templates/sources/*.yaml", "pipelines/connections/*.yam
 TYPE_ALIASES = {
     "sqlserver": ["sql server", "sqlserver", "mssql", "ms sql"],
     "postgresql": ["postgresql", "postgres"],
+    "mysql": ["mysql"],
     "bigquery": ["google bigquery", "google big query", "bigquery", "big query"],
+    "rest_api": ["rest api", "http api", "json api", "api"],
 }
+# Templates that onboard many different products (one per API), so a new source of this type is still researched
+# on the web: auth, pagination and rate limits are what its connection and job need.
+RESEARCHED_TYPES = {"rest_api"}
 # Words around a system name in free text, e.g. "the ERP database on PostgreSQL" -> system "erp".
 _FILLER = {"on", "from", "in", "our", "the", "a", "an", "database", "db", "system", "data", "server", "source", "trên", "từ", "của"}
 
@@ -166,6 +171,12 @@ def source_type(text: str) -> str | None:
         if any(re.search(rf"(?<!\w){re.escape(a)}(?!\w)", t) for a in aliases):
             return name
     return None
+
+
+def needs_research(system: str, stype: str | None, kb: Knowledge) -> bool:
+    """A source new to the platform: not an onboarded system, and either no template for its type or a type that
+    covers many products (an API)."""
+    return system not in kb.systems() and (not (stype and stype in kb.templates) or stype in RESEARCHED_TYPES)
 
 
 def parse_source(text: str, kb: Knowledge | None = None) -> tuple[str, str | None]:
