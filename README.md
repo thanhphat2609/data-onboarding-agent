@@ -1,10 +1,74 @@
 # data-onboarding-agent
 
-An AI agent that turns data requests into ready-to-build work: it gathers requirements from users step by step, checks existing data and source feasibility (availability, date range, ETA), notifies the data team on Teams, and drafts user stories with a pipeline proposal — with human approval at every key step.
+**v1.0.0 (Non-Prod)** · [Release notes](#release-v100) · [Demo](#demo-non-prod-video-walkthrough) · [Quick start](#quick-start-non-prod)
 
-Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
+An AI agent that turns a data request into ready-to-build work. It asks the requester for what is missing, checks the platform's two repos for what already exists, drafts the User Story, and hands it to the Data Team on Teams. **People approve twice** (the requester the draft, the Data Team the request); nothing is built or sent on the agent's own say-so.
+
+| Without the agent | With the agent |
+|---|---|
+| A Teams message, rounds of questions, someone reading both repos, a hand-written User Story | ≤ 5 turns of chat, a feasibility check that names the file behind every recommendation, a parent User Story plus 3 linked ones (spike, ingestion, transformation) |
 
 > Everything is in English (UI, questions, User Story, Teams messages, code, docs). The agent still understands answers written in Vietnamese.
+> Decisions (routing, validation, feasibility) live in code. The optional LLM only helps with language, and web research is advisory and marked unverified.
+
+---
+
+## Release v1.0.0
+
+**v1.0.0 closes the Non-Prod phase.** The whole flow has been run step by step in GitHub Codespaces (Docker Compose: app + PostgreSQL + SearXNG) against the real ingestion and transformation repos.
+
+| Area | In v1.0.0 |
+|---|---|
+| Intake | 7 details in a chat, max 3 questions per turn, free text and labelled / numbered answers, relative dates ("in 4 weeks") confirmed, English and Vietnamese |
+| Feasibility | Per source: existing dbt model → already landed → new job → new connection (`sqlserver`, `postgresql`, `mysql`, `rest_api`) → gap. Reads both platform repos, no sample data |
+| Web research | For sources the platform can't onboard yet: SearXNG + Trafilatura, top 5 links, key passages, questions for the Data Team, all unverified; links learned from approved requests |
+| Approval | Requester approves the draft; the Data Team approves or requests changes in its own tab; Teams card once per request |
+| Output | `user_story.md` (parent) + 3 User Stories (spike, ingestion, transformation; non-prod and prod parts) + summary, downloaded as one zip |
+| Platform | Docker Compose in Codespaces / laptop, PostgreSQL sessions, login with roles (Data Team vs. requesters), CI on every push, offline `pytest` suite |
+
+**Not in v1.0.0 (Prod phase):** running on the production VM (the Deploy workflow and `infrastructure/prod/` are written and wait for VM 1), a production LLM, Teams bot approvals, creating tickets in Azure DevOps / Jira. See [Roadmap](#roadmap-prod-and-after).
+
+---
+
+## Demo (Non-Prod): video walkthrough
+
+The demo the team saw, written as a shot list so it can be recorded as a video (about 12 minutes; the full click-by-click script is [docs/prototype_demo/02_happy_path.md](docs/prototype_demo/02_happy_path.md)). Setup: two browser windows (**R** requester, **D** Data Team in a private window) and the Teams channel.
+
+| Time | Scene | Show | Say |
+|---|---|---|---|
+| 0:00 | **1. The problem** | Slide or the **R** welcome screen with its three examples | "A data request is a Teams message, rounds of questions, a repo check and a hand-written User Story. The agent does the first three and drafts the fourth. People still approve." |
+| 0:45 | **2. Stack is up** | Terminal: `docker compose -f infrastructure/non-prod/docker-compose.yml ps` → `postgres`, `searxng`, `agent` healthy. **D**: ⚙️ Settings → Repositories lists the dbt models and source templates read from GitHub | "Three containers. The agent has no sample data: it reads the two platform repos." |
+| 1:30 | **3. Describe the need** (**R**) | Click **📇 Current CRM customers for a dashboard**. The *Your request* card fills in source and refresh from the sentence. Answer the 3 questions in one message | "Max 3 questions at once, labelled or numbered answers, 'in 4 weeks' becomes a date. 3 turns; the target is 5." |
+| 3:30 | **4. Feasibility and draft** (**R**) | The draft: user story, acceptance criteria. Open **Technical details**: *Feasible*, recommendation **Existing dbt model `crm_customers_current`**, file named, no new ingestion | "It found the model already exists, so nothing new is built. Every recommendation names its file." |
+| 4:30 | **5. Requester stays in control** | Type `eta: 2026-12-01` → a new draft. Show Teams: **still empty**. Click **✓ Approve draft** → the *New data request* card appears | "Changes before approval cost nothing. The Data Team is only pinged for confirmed requests." |
+| 6:00 | **6. Data Team review** (**D**) | 🛡 Review → pick the request → evidence per source. Comment `change eta to 2026-12-15` → **✎ Request changes**. **R** gets a new draft and approves it again; **D** clicks **✓ Approve** | "The reviewer sees what the agent saw, can push back, and nobody's request changes behind their back." |
+| 8:00 | **7. The deliverable** | **R**: preview + **⬇ User Stories (.zip)**. Teams: *Request approved — User Story ready*. Terminal: `ls outputs/<request_id>/` and the PostgreSQL `sessions` row (`status = done`, `review_action = approve`) | "A parent User Story and 3 linked ones: spike, ingestion, transformation, each non-prod then prod. Sessions survive a restart." |
+| 9:30 | **8. A source the platform can't onboard** (optional) | **＋ New request**: *Google Search Console clicks and impressions per page*. Answer "Where does it come from?". The gap, then **Web research**: top 5 links, questions for the Data Team, marked **unverified** | "It never pretends it can onboard it. The research is a head start for the Data Team." |
+| 11:30 | **9. Close** | The [Release table](#release-v100) | "Non-Prod is done. Next: the production VM." |
+
+Before recording, run the dry run in [docs/prototype_demo/01_prepare.md](docs/prototype_demo/01_prepare.md) and clean up its sessions. Fallbacks (Teams webhook fails, model disconnects, GitHub unreachable, empty web search) are listed there too. Add the recording link here once it exists.
+
+---
+
+## Quick start (Non-Prod)
+
+The same three containers run on a laptop and in GitHub Codespaces (Docker is preinstalled there).
+
+```bash
+cp -n infrastructure/non-prod/.env.example infrastructure/non-prod/.env   # then fill it in, see below
+docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
+```
+
+Open http://127.0.0.1:7860 (Codespaces: **PORTS** tab → 7860).
+
+| Set | Why |
+|---|---|
+| `PLATFORM_GITHUB_TOKEN` (a Codespaces secret in a codespace) | Fine-grained, *Contents: Read-only* on the ingestion and transformation repos |
+| `ACCOUNTS=data.team@gmail.com:<password>` | The Data Team login. Requesters self-register on first sign-in |
+| `TEAMS_WEBHOOK_URL` | Real Teams cards; empty = mock, written to `outputs/<request_id>/teams_messages.jsonl`. Test with `python -m agent.integrations.teams "<url>"` |
+| `OLLAMA_*` | Optional model; empty = rule-based (see [Deployment: model on Colab](#deployment-model-on-colab-web-app-on-your-machine)) |
+
+In a codespace where `app` can't reach `postgres` or the internet: `bash infrastructure/non-prod/codespace-network.sh` ([runbook](infrastructure/README.md#codespaces-containers-cant-reach-each-other-or-the-internet)). Settings, data locations and troubleshooting: [infrastructure/README.md](infrastructure/README.md).
 
 ---
 
@@ -14,34 +78,34 @@ Detailed plan: see [docs/plan.md](docs/plan.md) (prototype plan).
 - **[docs/architecture.md](docs/architecture.md)**: components, the agent graph, state, design rules, storage, deployment
 - **[docs/phases.md](docs/phases.md)**: status of each phase, known issues, next steps
 - **[docs/postgresql.md](docs/postgresql.md)**: the agent's tables, every one checked at a glance, and the queries after a demo
-- **[docs/prototype_demo/](docs/prototype_demo/README.md)**: the demo that closes the prototype: prepare, happy-path script, results and the close decision
+- **[docs/prototype_demo/](docs/prototype_demo/README.md)**: the Non-Prod demo: prepare, happy-path script, results sheet
 - **[docs/plan.md](docs/plan.md)**: the original prototype plan
 
 ## Status
 
-> Updated: 2026-10-30 (later). Details per item: [docs/phases.md](docs/phases.md).
+> Updated: 2026-10-30. v1.0.0 = Non-Prod phase done. Details per item: [docs/phases.md](docs/phases.md).
 
-| Phase | Status |
+| Area | Status |
 |---|---|
-| 0 – Setup | 🟡 Notebook written, not run on Colab; model not picked |
-| 1 – Intake | ✅ |
-| 2 – Knowledge | ✅ Read from the real ingestion and transformation repos (no demo data) |
-| 3 – Feasibility | ✅ |
-| 4 – Approval + Output | ✅ Approval by the Data Team in the review tab |
-| 5 – Teams + Demo | 🟡 Mock works; real webhook, real requests and demo pending. Demo script ready: [docs/prototype_demo/](docs/prototype_demo/README.md) |
-| Added: web research, UI redesign, repo knowledge | ✅ |
-| Added: Docker/Codespaces, PostgreSQL sessions, login with roles | 🟡 Runs in Codespaces (v0.7.0); a full request + approval in Docker still to check |
-| Added: SearXNG + Trafilatura for web research | 🟡 Checked offline; real searches in a codespace pending |
-| Added: CI/CD | 🟡 CI green on every push; the Deploy workflow waits for VM 1. Every prod setting in GitHub secrets/variables, `.env` written by the Deploy workflow |
-| Added: web research fix (clean source name, plain queries, two tools) + "where does it come from?" | 🟡 Checked offline end to end; real searches ran in a codespace (2026-10-27) |
-| Added: steadier web research (known official docs, stricter on-topic check, 7-day cache, engine top-up) | 🟡 Checked offline, incl. a second run from the cache; a real double run in a codespace pending |
-| Added: tests (`pytest`, offline, run by CI on every push) | ✅ 41 tests: intake, the 4 kinds of feasibility + the gap, source types (MySQL, REST API), an empty ingestion `pipelines/`, outputs (3 User Stories + zip), web research, learned links, `render_env.py` |
-| Added: docs links learned from approved requests (`source_docs`) | 🟡 Checked offline end to end: an approved request's links are listed first in the next one, even with no search results |
-| Added: requester approves the draft before the Data Team | 🟡 Checked offline end to end (graph + UI handlers); ⬜ click through in a browser |
-| Removed dead code (Bing / html DuckDuckGo engines, unused helpers) | ✅ ruff + vulture clean, offline checks pass |
-| Added: MySQL and REST API source types (ingestion's `mysql` and `rest_api` templates); a new API is a new connection, still researched on the web | 🟡 Checked offline (39 tests); the ingestion side ([ADR-0015](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0015-rest-api-source-via-redpanda.md)) merged in [data-onboarding-ingestion#9](https://github.com/thanhphat2609/data-onboarding-ingestion/pull/9); ⬜ an API request in a codespace |
-| Fixed: a system known only from dbt models (ingestion's `pipelines/` now starts empty) is not treated as new | 🟡 Checked offline (41 tests); ⬜ in a codespace against the real repos |
-| Added: 3 User Stories per request (spike, ingestion non-prod + prod, transformation non-prod + prod) | 🟡 Drafted after the Data Team approves, one file each, downloaded as one zip with their parent; checked offline end to end. Open: new dataset vs. change, when to skip ingestion, int/mart detail ([docs/phases.md](docs/phases.md#3-user-stories-per-request)) |
+| Intake, knowledge from the two repos, feasibility, approvals, outputs | ✅ Run step by step in the Codespaces demo (Docker, PostgreSQL) |
+| Web research (SearXNG + Trafilatura), docs links learned from approved requests | ✅ Real searches ran in a codespace (2026-10-27); ⬜ a second run from the cache with PostgreSQL |
+| 3 User Stories per request (spike, ingestion, transformation) + zip | ✅ |
+| MySQL and REST API source types; systems known only from dbt models | ✅ Checked offline; ⬜ an API request in a codespace against the real ingestion repo |
+| Docker / Codespaces, PostgreSQL sessions, login with roles | ✅ |
+| CI on every push (offline `pytest`, ruff, compose, image build) | ✅ |
+| Real Teams webhook | ✅ Per the Codespaces demo (check `teams_messages.jsonl` is absent in `outputs/<request_id>/`) |
+| Colab-hosted model (Phase 0) | ⬜ Notebook written, not run; the demo ran rule-based |
+| Deploy to VM 1 (Prod) | ⬜ Workflow and `infrastructure/prod/` written, waiting for the VM |
+| 3–5 real past requests replayed with `agent.workflow.evaluate` | ⬜ |
+| Open points of the 3 User Stories (new dataset vs. change, skipping ingestion, int/mart detail) | ⬜ [docs/phases.md](docs/phases.md#3-user-stories-per-request) |
+
+## Roadmap: Prod and after
+
+1. **Prod on VM 1** (the next milestone): set the GitHub secrets and variables ([infrastructure/prod/README.md](infrastructure/prod/README.md)), run the Deploy workflow by hand, repeat the demo there (this repo before data-onboarding-ingestion).
+2. A production model: Ollama / vLLM on a GPU VM, or an LLM API approved by the company.
+3. Teams bot approvals in the thread; real tickets (`stories.json` for Azure DevOps / Jira); lake metadata for a real date-range check; GitHub MCP.
+
+More in [docs/phases.md](docs/phases.md#after-the-prototype).
 
 ---
 
@@ -152,7 +216,7 @@ Or activate the venv first (`.venv\Scripts\Activate.ps1`, or `source .venv/bin/a
 
 ```bash
 python -m pip install pytest
-python -m pytest -q tests          # 34 tests, ~5 s, offline: no network, LLM or database server
+python -m pytest -q tests          # ~5 s, offline: no network, LLM or database server
 ```
 
 CI runs the same tests on every push. They read small copies of the two platform repos in `tests/fixtures/` (the `sqlserver`, `mysql` and `rest_api` templates, the `crm` connection and job, two dbt models) and fake the web search, so they never depend on GitHub or a search engine. Add or update a test with every fix or feature (`CLAUDE.md`).
@@ -260,7 +324,3 @@ $env:OLLAMA_HOST = "https://xxxx.trycloudflare.com"; $env:OLLAMA_API_KEY = "..."
 | `SEARXNG_URL` | empty (compose: `http://searxng:8080`) | Self-hosted SearXNG, the first search engine for web research; empty = only Brave (with the browser) and DuckDuckGo (`ddgs`) |
 | `RELEVANCE_THRESHOLD`, `ENABLE_RELEVANCE_CHECKING`, `FORCE_MULTI_ENGINE_SEARCH` | `0.3`, `true`, `false` | Search result quality check (same as web-search-mcp) |
 | `MAX_CONTENT_LENGTH`, `DEFAULT_TIMEOUT` | `500000`, `6000` (ms) | Page content limit and fetch timeout |
-
-## After the prototype
-
-Roadmap (prod on VM 1, a production model, Teams bot approvals, real tickets, lake metadata, GitHub MCP): see [docs/phases.md](docs/phases.md#after-the-prototype).

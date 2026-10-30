@@ -2,7 +2,7 @@
 
 Status of each phase of the prototype plan ([plan.md](plan.md)) plus the work added after it.
 
-> Updated: 2026-10-27. ✅ done and verified · 🟡 code exists, not yet run/verified in the real environment · ⬜ not started
+> Updated: 2026-10-30 (v1.0.0, Non-Prod). ✅ done and verified · 🟡 code exists, not yet run/verified in the real environment · ⬜ not started
 
 ## Overview
 
@@ -22,6 +22,11 @@ Status of each phase of the prototype plan ([plan.md](plan.md)) plus the work ad
 | Added: CI/CD | Checks on every push; deploy to VM 1 when someone runs the Deploy workflow | 🟡 CI written (runs on GitHub); deploy waits for VM 1 |
 
 ---
+
+## v1.0.0: Non-Prod phase closed ✅ (2026-10-30)
+- ✅ The whole flow was run step by step in a codespace (Docker Compose: app, PostgreSQL, SearXNG), following [prototype_demo/](prototype_demo/README.md). The README was rewritten for the release: what v1.0.0 contains, a video-style shot list of the Non-Prod demo (9 scenes, ~12 min), the Non-Prod quick start, status and the Prod roadmap. Tagged `v1.0.0` on `main` after the pull request is merged.
+- ⬜ Not in v1.0.0: Prod on VM 1 (Deploy workflow written, waits for the VM), Colab-hosted model, 3–5 real past requests, an API request in a codespace against the real ingestion repo, the open points of the [3 User Stories](#3-user-stories-per-request), the recorded video (link goes in the README's demo section).
+- Docs only, no code change; tests unchanged.
 
 ## Phase 0 – Setup
 - ✅ Repo + folder structure
