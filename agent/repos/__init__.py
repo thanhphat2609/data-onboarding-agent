@@ -50,7 +50,13 @@ class Knowledge:
     errors: list[str] = field(default_factory=list)
 
     def systems(self) -> list[str]:
-        return sorted({j["system"] for j in self.jobs} | {c["system"] for c in self.connections.values()})
+        """Systems the platform knows: from ingestion (jobs, connections) and from dbt models, so a system that is
+        modelled but has no connection yet (e.g. an ingestion repo that starts empty) is not treated as new."""
+        return sorted(
+            {j["system"] for j in self.jobs}
+            | {c["system"] for c in self.connections.values()}
+            | {m["system"] for m in self.models if m.get("system")}
+        )
 
     def jobs_for(self, system: str) -> list[dict]:
         return [j for j in self.jobs if j["system"] == system]

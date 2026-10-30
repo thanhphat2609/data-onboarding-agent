@@ -128,6 +128,8 @@ One chat session = one LangGraph `thread_id`. Every step is checkpointed (Postgr
 | | `pipelines/jobs/*.yaml` | Tables landing in the lake, from `sink.params.path` = `<system>/<schema>/<table>` (`landed`) |
 | data-onboarding-transformation | `models/**/*.yml`, or `target/manifest.json` if committed | dbt models (`existing_model`); system from `meta.source`, `stg_<system>__…` or the folder `models/<layer>/<system>/` |
 
+A **known system** is one with an ingestion job or connection, or a dbt model (`Knowledge.systems()`). The ingestion repo's `pipelines/` starts empty (its test sources are onboarded during a demo), so a system that only has dbt models, like `crm`, is still known: it isn't asked about or researched as a new source. A table of it that isn't modelled yet needs a connection: the gap asks for its source type ("CRM on SQL Server" → a new `sqlserver` connection).
+
 Each repo is read from a local checkout (`INGESTION_PATH`, `TRANSFORMATION_PATH`) or from GitHub (`*_REPO`, `*_REF`, `GITHUB_TOKEN`), once per process; **⚙️ Settings → Reload repositories** reads them again.
 
 Feasibility has no history dates to compare: ingestion keeps one snapshot per day from its first run (ingestion ADR-0004), so the agent adds a history risk instead of a date-range gap. Lead times per kind of work are rough team estimates in `LEAD_TIME_DAYS` ([feasibility.py](../agent/workflow/nodes/feasibility.py)).

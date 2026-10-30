@@ -6,6 +6,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from agent import config, repos
 from agent.workflow.evaluate import run_sample
+from agent.workflow.nodes.feasibility import assess_source
 from agent.workflow.runner import AgentRunner
 
 # Every detail at once, labelled. The grain names no table, so it can't change which table the request is about.
@@ -86,3 +87,38 @@ def test_api_source_is_a_new_connection_and_still_researched():
     folder = config.ROOT / obs["outputs"]["user_story"]
     ingestion = (folder.parent / "us_2_ingestion.md").read_text()
     assert "`rest_api` source template" in ingestion and "Flink SQL over the table `landing`" in ingestion
+
+
+@pytest.fixture
+def empty_pipelines(tmp_path, monkeypatch):
+    """The ingestion repo with an empty pipelines/ (no connection or job yet, as in a new environment)."""
+    import shutil
+
+    from tests.conftest import FIXTURES
+
+    ingestion = tmp_path / "ingestion"
+    shutil.copytree(FIXTURES / "ingestion", ingestion)
+    for f in (ingestion / "pipelines").rglob("*.yaml"):
+        f.unlink()
+    monkeypatch.setattr(config, "INGESTION_PATH", str(ingestion))
+    repos.reload()
+
+
+def test_system_known_from_dbt_only_is_not_new(empty_pipelines):
+    # CRM has dbt models but no connection: the existing model is still found, and CRM is not asked about or
+    # researched as a new source.
+    runner = AgentRunner(checkpointer=InMemorySaver())
+    result = run_sample(sample("The sales team needs the current list of CRM customers with their segment for a "
+                               "weekly dashboard."), runner)
+    assert result["observed"]["recommendation"] == {"crm": "crm_customers_current"}
+    state = runner.state(runner.sessions.recent(limit=1)[0]["thread_id"])
+    assert not state["request"].get("source_origin") and not state.get("research")
+
+
+def test_table_of_a_system_without_connection(empty_pipelines):
+    # No connection for CRM yet: naming the source type makes it a new connection; without it, the gap says why.
+    result = run_sample(sample("dataset: CRM segments table (segment id and name)\nsource: CRM on SQL Server"))
+    assert result["observed"]["recommendation"] == {"crm on sql server": "sqlserver"}
+    kb = repos.get()
+    gap = assess_source("CRM", {"eta": None, "dataset_description": "CRM segments"}, [], None, kb)["gap"]
+    assert "`crm` has dbt models but no connection in the ingestion repo" in gap["message"]

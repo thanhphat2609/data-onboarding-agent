@@ -229,7 +229,8 @@ def parse_field(field: str, value: str, today: date):
         return None
     if field == "sources":
         found = find_sources(value)
-        if found:
+        # "CRM on SQL Server" keeps its type: a system known only from dbt may still need a connection from it.
+        if found and not repos.source_type(value):
             return found
         value = _PAREN_RE.sub(lambda m: m.group(0).replace(",", " ").replace("/", " "), value)  # don't split inside (...)
         raw = [clean_source(s) for s in re.split(r"[,;/]| và | and ", value) if s.strip()]

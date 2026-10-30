@@ -90,7 +90,7 @@ Other examples, if there's time (show the draft only, no need to approve):
 
 | Example | Expected recommendation |
 |---|---|
-| **🏷️ CRM segments (not ingested yet)** | CRM is onboarded but `segments` has no job: a **new ingestion job** on `crm-sqlserver-nonprod`, then dbt models |
+| **🏷️ CRM segments (not ingested yet)** | With a `crm` connection in the ingestion repo: a **new ingestion job** on it, then dbt models. With the ingestion repo's empty `pipelines/` (the default): a **gap** saying `crm` has dbt models but no connection; answer `source: CRM on SQL Server` and it becomes a **new connection** from the `sqlserver` template |
 | **🗄️ HR employees on SQL Server (new system)** | Not onboarded, but SQL Server is supported: a **new connection** from the `sqlserver` template, a job, dbt models |
 
 ---
