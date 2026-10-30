@@ -148,7 +148,7 @@ Step 1 of the agreed order (draft approval → 3 User Stories → reopen / linke
 - Checked offline: graph end to end (draft → change → new draft → approve → Teams once → Data Team edit → new draft → approve → done), the UI handlers (approve button, question, "no", change), the Google Search Console path with web research. ⬜ Click through in a browser; ⬜ in Docker with PostgreSQL
 
 ## Fixed: systems known only from dbt models 🟡 (2026-10-30)
-data-onboarding-ingestion moved its test sources to `infrastructure/non-prod/sample_database/`; its `pipelines/` now starts empty and connections are created during its demo. The agent then knew no system at all:
+data-onboarding-ingestion moved its test sources to `infrastructure/non-prod/example-sources/` (one folder and Compose file per source); its `pipelines/` now starts empty and connections are created during its demo. The agent then knew no system at all:
 - ✅ "Current CRM customers" still found `crm_customers_current`, but asked "where does CRM come from?" and ran the web research on CRM. Now a system with dbt models counts as known (`Knowledge.systems()`).
 - ✅ "source: CRM on SQL Server" was cut to `crm`, losing the type. A source answer that names a type keeps it, so a system known only from dbt gets a **new connection** from that template.
 - ✅ The gap for a table of such a system says why: "`crm` has dbt models but no connection in the ingestion repo; name its source type".

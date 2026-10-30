@@ -51,7 +51,7 @@ Sign in as `data.team@gmail.com` → **⚙️ Settings → Repositories**. It mu
 - system `crm` (known from its dbt models)
 - dbt models `stg_crm__customers` and `crm_customers_current`
 - source templates `sqlserver`, `postgresql`, `mysql`, `rest_api`
-- connections and jobs: none, unless the ingestion demo's files were merged to its `main`. Since 2026-10-30 the ingestion repo's `pipelines/` starts empty; its test sources are onboarded step by step in [its demo](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/infrastructure/non-prod/sample_database/README.md)
+- connections and jobs: none, unless the ingestion demo's files were merged to its `main`. Since 2026-10-30 the ingestion repo's `pipelines/` starts empty; its test sources are onboarded step by step in [its demo](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/infrastructure/non-prod/example-sources/README.md)
 
 If something is missing, click **↻ Reload repositories**. If the platform repos changed since, note what's new: the happy path below relies on `crm_customers_current`.
 
