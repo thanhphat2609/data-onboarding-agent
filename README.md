@@ -30,23 +30,9 @@ An AI agent that turns a data request into ready-to-build work. It asks the requ
 
 ---
 
-## Demo (Non-Prod): video walkthrough
+## Project Demo Non-Prod
 
-The demo the team saw, written as a shot list so it can be recorded as a video (about 12 minutes; the full click-by-click script is [docs/prototype_demo/02_happy_path.md](docs/prototype_demo/02_happy_path.md)). Setup: two browser windows (**R** requester, **D** Data Team in a private window) and the Teams channel.
-
-| Time | Scene | Show | Say |
-|---|---|---|---|
-| 0:00 | **1. The problem** | Slide or the **R** welcome screen with its three examples | "A data request is a Teams message, rounds of questions, a repo check and a hand-written User Story. The agent does the first three and drafts the fourth. People still approve." |
-| 0:45 | **2. Stack is up** | Terminal: `docker compose -f infrastructure/non-prod/docker-compose.yml ps` → `postgres`, `searxng`, `agent` healthy. **D**: ⚙️ Settings → Repositories lists the dbt models and source templates read from GitHub | "Three containers. The agent has no sample data: it reads the two platform repos." |
-| 1:30 | **3. Describe the need** (**R**) | Click **📇 Current CRM customers for a dashboard**. The *Your request* card fills in source and refresh from the sentence. Answer the 3 questions in one message | "Max 3 questions at once, labelled or numbered answers, 'in 4 weeks' becomes a date. 3 turns; the target is 5." |
-| 3:30 | **4. Feasibility and draft** (**R**) | The draft: user story, acceptance criteria. Open **Technical details**: *Feasible*, recommendation **Existing dbt model `crm_customers_current`**, file named, no new ingestion | "It found the model already exists, so nothing new is built. Every recommendation names its file." |
-| 4:30 | **5. Requester stays in control** | Type `eta: 2026-12-01` → a new draft. Show Teams: **still empty**. Click **✓ Approve draft** → the *New data request* card appears | "Changes before approval cost nothing. The Data Team is only pinged for confirmed requests." |
-| 6:00 | **6. Data Team review** (**D**) | 🛡 Review → pick the request → evidence per source. Comment `change eta to 2026-12-15` → **✎ Request changes**. **R** gets a new draft and approves it again; **D** clicks **✓ Approve** | "The reviewer sees what the agent saw, can push back, and nobody's request changes behind their back." |
-| 8:00 | **7. The deliverable** | **R**: preview + **⬇ User Stories (.zip)**. Teams: *Request approved — User Story ready*. Terminal: `ls outputs/<request_id>/` and the PostgreSQL `sessions` row (`status = done`, `review_action = approve`) | "A parent User Story and 3 linked ones: spike, ingestion, transformation, each non-prod then prod. Sessions survive a restart." |
-| 9:30 | **8. A source the platform can't onboard** (optional) | **＋ New request**: *Google Search Console clicks and impressions per page*. Answer "Where does it come from?". The gap, then **Web research**: top 5 links, questions for the Data Team, marked **unverified** | "It never pretends it can onboard it. The research is a head start for the Data Team." |
-| 11:30 | **9. Close** | The [Release table](#release-v100) | "Non-Prod is done. Next: the production VM." |
-
-Before recording, run the dry run in [docs/prototype_demo/01_prepare.md](docs/prototype_demo/01_prepare.md) and clean up its sessions. Fallbacks (Teams webhook fails, model disconnects, GitHub unreachable, empty web search) are listed there too. Add the recording link here once it exists.
+Watch the full data-onboarding-agent demo on YouTube: [Watch here](https://youtu.be/6FwHkSyG-8M)
 
 ---
 
