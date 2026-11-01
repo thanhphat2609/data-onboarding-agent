@@ -214,6 +214,11 @@ Still open:
 - Whether US 2 is skipped when nothing changes in ingestion (data already lands with every needed column).
 - The int/mart plan (the transformation side is not the focus yet).
 
+## Airflow moved to data-onboarding-orchestration 🟡 (2026-11-01)
+
+- ✅ Docs and infrastructure comments: the `airflow` database and role now belong to data-onboarding-orchestration's Airflow, and the deploy order is agent → ingestion → orchestration. No agent code changes: it still reads `code/templates/sources/`, `pipelines/connections/` and `pipelines/jobs/` from data-onboarding-ingestion.
+- ⬜ Run the three stacks together in a Codespace.
+
 ## Next steps
 
 > **2026-10-30:** MySQL and REST API source types (above): a new API is a `rest_api` connection, still researched. The ingestion side (ADR-0015, Redpanda) is merged in data-onboarding-ingestion#9.

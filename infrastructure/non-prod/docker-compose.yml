@@ -9,7 +9,7 @@ services:
   # ─────────────────────────────────────────────
   # PostgreSQL: the platform's one server, one database per owner (postgres/init/01-databases.sh)
   #   onboarding_agent  this app's sessions
-  #   airflow           Airflow metadata DB      } data-onboarding-ingestion: its Airflow joins the
+  #   airflow           Airflow metadata DB      } data-onboarding-orchestration's Airflow joins the
   #   platform          ingestion run records    } data-platform network and connects to postgres:5432
   # ─────────────────────────────────────────────
   postgres:
@@ -18,7 +18,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      # Read by the init script on the first start only (empty volume). The ingestion repo's .env must use the
+      # Read by the init script on the first start only (empty volume). The orchestration repo's .env must use the
       # same values as AIRFLOW_DB_PASSWORD / PLATFORM_DB_PASSWORD.
       AGENT_DB_PASSWORD: ${POSTGRES_AGENT_PASSWORD:-agent}
       AIRFLOW_DB_PASSWORD: ${POSTGRES_AIRFLOW_PASSWORD:-airflow}
@@ -127,8 +127,8 @@ services:
 
 networks:
   default: {}
-  # Shared with data-onboarding-ingestion: its Airflow reaches this server as postgres:5432 on this network,
-  # so start this stack first (the ingestion compose declares it external).
+  # Shared with data-onboarding-orchestration: its Airflow reaches this server as postgres:5432 on this network,
+  # so start this stack first (the ingestion and orchestration compose files declare it external).
   platform:
     name: data-platform
 

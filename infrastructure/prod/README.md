@@ -1,6 +1,6 @@
 # Prod (VM 1)
 
-The agent and the platform's shared PostgreSQL server on VM 1, next to data-onboarding-ingestion's Airflow and Flink JobManager. **Draft until VM 1 exists.** Same CI/CD flow as data-onboarding-ingestion ([its ADR-0012](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0012-cicd-ssh-deploy.md)).
+The agent and the platform's shared PostgreSQL server on VM 1, next to data-onboarding-orchestration's Airflow and data-onboarding-ingestion's Flink JobManager. **Draft until VM 1 exists.** Same CI/CD flow as data-onboarding-ingestion ([its ADR-0012](https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/docs/adr/0012-cicd-ssh-deploy.md)).
 
 ```
 docker-compose.yml   postgres (databases onboarding_agent, airflow, platform) + searxng + app; creates the data-platform network
@@ -20,7 +20,7 @@ Separate from the two stages: `.github/workflows/delete-merged-branch.yml` delet
 
 **Approving a deploy** = running the workflow: Actions → Deploy → Run workflow → branch `main` → optionally a commit (`sha`, default the latest `main`) and `no_cache` → Run. A commit without a green CI run is refused. A push alone deploys nothing.
 
-PostgreSQL is not recreated by a deploy unless its settings change. Deploy this repository **before** data-onboarding-ingestion on a new VM: it creates the `data-platform` network and the database server.
+PostgreSQL is not recreated by a deploy unless its settings change. Deploy this repository **first** on a new VM, then data-onboarding-ingestion, then data-onboarding-orchestration: it creates the `data-platform` network and the database server.
 
 ## GitHub setup (Settings of this repository)
 
@@ -28,7 +28,7 @@ PostgreSQL is not recreated by a deploy unless its settings change. Deploy this 
 
 A setting you can't fill in yet: set it to **`TODO`** (secret or variable). The deploy stops while any secret or variable of this repository is still `TODO`, naming each one, so a placeholder never reaches the VM. Don't use another placeholder such as `1`: it would be deployed as a real value.
 
-Secrets and variables are per repository: set them here **and** in data-onboarding-ingestion. Both repositories can use the same SSH key and deploy user. One value is shared: this repository's `POSTGRES_AIRFLOW_PASSWORD` secret = ingestion's `AIRFLOW_DB_PASSWORD` secret.
+Secrets and variables are per repository: set them here, in data-onboarding-ingestion **and** in data-onboarding-orchestration. All three can use the same SSH key and deploy user. One value is shared: this repository's `POSTGRES_AIRFLOW_PASSWORD` secret = orchestration's `AIRFLOW_DB_PASSWORD` secret.
 
 ### Secrets (Settings → Secrets and variables → Actions → New repository secret)
 
@@ -45,7 +45,7 @@ App settings (written into `.env`; generate passwords with `openssl rand -hex 24
 |---|---|---|
 | `POSTGRES_PASSWORD` | yes | `postgres` superuser, admin only |
 | `POSTGRES_AGENT_PASSWORD` | yes | Role `agent`, this app |
-| `POSTGRES_AIRFLOW_PASSWORD` | yes | Role `airflow`; same value as ingestion's `AIRFLOW_DB_PASSWORD` |
+| `POSTGRES_AIRFLOW_PASSWORD` | yes | Role `airflow`; same value as orchestration's `AIRFLOW_DB_PASSWORD` |
 | `POSTGRES_PLATFORM_PASSWORD` | yes | Role `platform`, ingestion's run history (empty database until its Phase 5) |
 | `PLATFORM_GITHUB_TOKEN` | yes | Fine-grained token, Contents: Read-only on data-onboarding-ingestion and data-onboarding-transformation |
 | `ACCOUNTS` | yes | Data Team logins, `email:password`, comma-separated |

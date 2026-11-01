@@ -1,5 +1,5 @@
 # Prod on VM 1: the agent's web UI + the platform's shared PostgreSQL server (databases onboarding_agent, airflow,
-# platform). data-onboarding-ingestion's Airflow on the same VM joins the `data-platform` network created here,
+# platform). data-onboarding-orchestration's Airflow on the same VM joins the `data-platform` network created here,
 # so this stack starts first. Deployed by infrastructure/prod/deploy.sh from the Deploy workflow.
 # DRAFT until VM 1 exists. Differences from non-prod: every password and ACCOUNTS required, no defaults.
 name: data-onboarding-agent
@@ -102,7 +102,7 @@ services:
 
 networks:
   default: {}
-  # Shared with data-onboarding-ingestion's Airflow on VM 1 (its compose declares it external).
+  # Shared with data-onboarding-orchestration's Airflow on VM 1 (its compose declares it external).
   platform:
     name: data-platform
 
