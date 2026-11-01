@@ -2,6 +2,8 @@
 
 The Data Onboarding Agent is a **LangGraph state machine** with a **Gradio web UI** in front of it. Requesters describe the data they need in a chat. The agent fills a structured request, checks it against the code of the two platform repositories, [data-onboarding-ingestion](https://github.com/thanhphat2609/data-onboarding-ingestion) and [data-onboarding-transformation](https://github.com/thanhphat2609/data-onboarding-transformation), to see what already exists and what has to be built, and hands it to the **Data Team** for approval. After approval it writes a User Story and posts a summary to Teams.
 
+![Architecture](assets/architecture.svg)
+
 ## System context
 
 ```mermaid
