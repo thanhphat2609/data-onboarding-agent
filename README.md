@@ -11,6 +11,8 @@ An AI agent that turns a data request into ready-to-build work. It asks the requ
 > Everything is in English (UI, questions, User Story, Teams messages, code, docs). The agent still understands answers written in Vietnamese.
 > Decisions (routing, validation, feasibility) live in code. The optional LLM only helps with language, and web research is advisory and marked unverified.
 
+![Architecture](docs/assets/architecture.svg)
+
 ---
 
 ## Release v1.0.0
