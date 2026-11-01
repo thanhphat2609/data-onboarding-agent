@@ -56,7 +56,7 @@ They feed the run history in ingestion's UI (state, counts, duration, errors, li
 
 It is created now, empty, because the init script only runs on the **first start** (empty `pgdata` volume). Added later, it would mean creating the role and database by hand as the superuser on the live server. Keeping it costs one generated password.
 
-Airflow (data-onboarding-ingestion) reaches the server over the shared Docker network `data-platform` as `postgres:5432`, database `airflow`, user `airflow`. That needs both stacks on one Docker host, as on the demo VM 1 (Agent + Airflow + Flink JobManager). Decision record on the ingestion side: its ADR-0011.
+Airflow (data-onboarding-orchestration) reaches the server over the shared Docker network `data-platform` as `postgres:5432`, database `airflow`, user `airflow`. That needs both stacks on one Docker host, as on the demo VM 1 (Agent + Airflow + Flink JobManager). Decision record: data-onboarding-ingestion's ADR-0011.
 
 ## The `sessions` table
 

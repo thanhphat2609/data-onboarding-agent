@@ -139,7 +139,7 @@ Feasibility has no history dates to compare: ingestion keeps one snapshot per da
 | What | Where | Notes |
 |---|---|---|
 | Sessions (checkpoints + `sessions` table) | `DATABASE_URL` set: PostgreSQL, database `onboarding_agent` (Docker compose). Otherwise SQLite at `CHECKPOINT_DB`, default `./checkpoints.db` (laptop, Colab) | Layout and queries: [postgresql.md](postgresql.md). Sessions from before the table existed get their row on the next start |
-| Airflow metadata, ingestion run records | PostgreSQL, databases `airflow` and `platform` on the same server | Owned by data-onboarding-ingestion (its ADR-0011); the agent never reads them. `platform` stays empty until ingestion's Phase 5 run history; why it exists and which password goes where: [postgresql.md](postgresql.md#roles-and-passwords) |
+| Airflow metadata, ingestion run records | PostgreSQL, databases `airflow` and `platform` on the same server | Owned by data-onboarding-orchestration (`airflow`) and data-onboarding-ingestion (`platform`, its ADR-0011); the agent never reads them. `platform` stays empty until ingestion's Phase 5 run history; why it exists and which password goes where: [postgresql.md](postgresql.md#roles-and-passwords) |
 | Per-request files | `outputs/<request_id>/` | `request.json`, `feasibility.json`, `user_story.md`, `us_1_spike.md`, `us_2_ingestion.md`, `us_3_transformation.md`, `user_stories_<request_id>.zip`, `summary.md`, `teams_messages.jsonl`, `source_notes_<source>.yaml` |
 | Evaluation runs | `outputs/eval/<timestamp>/` | `report.md`, `mistakes.csv` from `python -m agent.workflow.evaluate <folder>` (past requests: `docs/prototype_demo/past_requests/*.yaml`, not in the image) |
 
@@ -176,10 +176,10 @@ The Docker setups run three containers:
 | Container | Image | Role | Port |
 |---|---|---|---|
 | `app` | built from [infrastructure/Dockerfile](../infrastructure/Dockerfile) | Gradio UI + agent | `127.0.0.1:7860` |
-| `postgres` | `postgres:16.15-alpine` | The platform's one PostgreSQL server: `onboarding_agent` (this app), `airflow` and `platform` (data-onboarding-ingestion, its ADR-0011). Creates the Docker network `data-platform` that ingestion's Airflow joins | `127.0.0.1:5432` |
+| `postgres` | `postgres:16.15-alpine` | The platform's one PostgreSQL server: `onboarding_agent` (this app), `airflow` (data-onboarding-orchestration) and `platform` (data-onboarding-ingestion, its ADR-0011). Creates the Docker network `data-platform` that Airflow, Flink, Redpanda and the Ingestion API join | `127.0.0.1:5432` |
 | `searxng` | `searxng/searxng:2026.9.30-a9d990033` | Self-hosted metasearch, the first engine of web research ([Web search](#web-search)); keeps no data | none (app only, `http://searxng:8080`) |
 
-On VM 1 these run next to data-onboarding-ingestion's Web UI, API, Airflow and Flink JobManager. Deploy this stack first: it creates the network and the database server.
+On VM 1 these run next to data-onboarding-ingestion's Web UI, API and Flink JobManager and data-onboarding-orchestration's Airflow. Deploy this stack first, then ingestion, then orchestration: this one creates the network and the database server.
 
 The Colab-hosted model sits behind [notebooks/ollama_auth_proxy.py](../notebooks/ollama_auth_proxy.py) (API key, read/chat endpoints only) and a cloudflared tunnel. See the main [README](../README.md#deployment-model-on-colab-web-app-on-your-machine).
 
