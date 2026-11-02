@@ -219,6 +219,12 @@ Still open:
 - ✅ Docs and infrastructure comments: the `airflow` database and role now belong to data-onboarding-orchestration's Airflow, and the deploy order is agent → ingestion → orchestration. No agent code changes: it still reads `code/templates/sources/`, `pipelines/connections/` and `pipelines/jobs/` from data-onboarding-ingestion.
 - ⬜ Run the three stacks together in a Codespace.
 
+## Comments and dead-code check ✅ (2026-11-02)
+
+- ✅ Convention in `CLAUDE.md`: comments say why; docstrings on public functions whose name doesn't tell the whole story (always from about 15 lines); unused code is deleted in the same commit.
+- ✅ Docstrings on the long functions that had none (workflow nodes, graph, UI handlers, repo loading, extraction).
+- ✅ `vulture` in CI (`pyproject.toml`): clean today; `agent/state.py` (keys read by name), the notebook tool schemas and `row_factory` are listed as used from outside.
+
 ## Next steps
 
 > **2026-10-30:** MySQL and REST API source types (above): a new API is a `rest_api` connection, still researched. The ingestion side (ADR-0015, Redpanda) is merged in data-onboarding-ingestion#9.

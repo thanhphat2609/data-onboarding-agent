@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 
 def _adaptive_card(title: str, text: str) -> dict:
+    """The Teams message payload: a card with a title and Markdown text."""
     return {
         "type": "message",
         "attachments": [
@@ -42,6 +43,7 @@ def post_card(webhook_url: str, card: dict) -> None:
 
 
 def _write_mock(request_id: str, thread_ref: str, card: dict, error: str | None = None) -> None:
+    """Keeps the card (and the error, if any) in the request's output folder, for tests and demos."""
     out_dir = config.OUTPUT_DIR / request_id
     out_dir.mkdir(parents=True, exist_ok=True)
     record = {"sent_at": datetime.now().isoformat(timespec="seconds"), "thread_ref": thread_ref, "payload": card}
@@ -77,6 +79,7 @@ def send_message(request_id: str, title: str, text: str) -> str:
 
 
 def _send_test_card(url: str) -> int:
+    """Posts a test card to the webhook; the return value is the command line's exit code."""
     card = _adaptive_card(
         "[TEST] data-onboarding-agent",
         f"Test message sent at {datetime.now():%Y-%m-%d %H:%M:%S}.\n\n"

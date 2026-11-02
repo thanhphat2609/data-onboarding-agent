@@ -48,6 +48,7 @@ _COMMON_WORDS = {
 
 
 def _env_flag(name: str, default: bool) -> bool:
+    """A true or false environment variable, with a default when it isn't set."""
     value = os.getenv(name)
     return default if value is None else value.strip().lower() not in ("0", "false", "no", "off")
 
@@ -55,11 +56,13 @@ def _env_flag(name: str, default: bool) -> bool:
 # ---------- URL cleanup ----------
 
 def _clean_url(url: str) -> str:
+    """Fixes protocol-relative URLs (``//host``) to https."""
     url = (url or "").strip()
     return "https:" + url if url.startswith("//") else url
 
 
 def _keep(results: list[SearchResult], title: str, url: str, snippet: str, max_results: int) -> None:
+    """Adds a result unless it is empty, not http(s) or over the limit."""
     url = _clean_url(url)
     if not (title and url.startswith(("http://", "https://"))) or len(results) >= max_results:
         return
@@ -71,6 +74,7 @@ def _keep(results: list[SearchResult], title: str, url: str, snippet: str, max_r
 # ---------- parsers (selectors from the original) ----------
 
 def parse_brave(html: str, max_results: int) -> list[SearchResult]:
+    """Results from Brave's HTML page. Its markup changes, so several selectors are tried in turn."""
     soup = BeautifulSoup(html, "html.parser")
     results: list[SearchResult] = []
     for selector in ("[data-type='web']", ".result", ".fdb"):
@@ -114,6 +118,7 @@ def _load(url: str, timeout: float, wait_for: str) -> str:
 
 
 def search_brave(query: str, num_results: int, timeout: float) -> list[SearchResult]:
+    """Searches Brave and returns up to ``num_results`` results."""
     url = f"https://search.brave.com/search?q={quote_plus(query)}&source=web"
     return parse_brave(_load(url, timeout, "[data-type='web']"), num_results)
 
@@ -174,6 +179,7 @@ def search(query: str, num_results: int = 5, timeout: float = 12.0) -> SearchRes
     force_all = _env_flag("FORCE_MULTI_ENGINE_SEARCH", False)
 
     def run() -> SearchResponse:
+        """Tries the engines in turn and returns the best results, merging good short lists."""
         best, best_engine, best_quality = [], "None", 0.0
         merged: list[SearchResult] = []  # good-quality lists that were too short, topped up engine after engine
         merged_from: list[str] = []

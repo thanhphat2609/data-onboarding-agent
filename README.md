@@ -203,8 +203,9 @@ Or activate the venv first (`.venv\Scripts\Activate.ps1`, or `source .venv/bin/a
 ### Tests
 
 ```bash
-python -m pip install pytest
+python -m pip install pytest vulture
 python -m pytest -q tests          # ~5 s, offline: no network, LLM or database server
+vulture                            # unused code (config in pyproject.toml)
 ```
 
 CI runs the same tests on every push. They read small copies of the two platform repos in `tests/fixtures/` (the `sqlserver`, `mysql` and `rest_api` templates, the `crm` connection and job, two dbt models) and fake the web search, so they never depend on GitHub or a search engine. Add or update a test with every fix or feature (`CLAUDE.md`).

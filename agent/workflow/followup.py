@@ -44,10 +44,12 @@ class FollowUp:
 
 
 def is_no(text: str) -> bool:
+    """True for an answer that declines."""
     return bool(_NO.match(norm(text)))
 
 
 def is_question(text: str) -> bool:
+    """True for text that reads as a question."""
     t = norm(text)
     return t.endswith("?") or bool(_QUESTION_START.match(t)) or bool(_QUESTION_PHRASE.search(t))
 
@@ -59,6 +61,7 @@ def confirms(text: str, pending: dict) -> bool:
 
 
 def _show(field: str, value) -> str:
+    """A field value as text for a reply."""
     if field == "sources":
         return ", ".join(value)
     if field == "date_range":
@@ -172,6 +175,7 @@ def preview_change(text: str, values: dict) -> FollowUp | None:
 
 
 def respond(text: str, values: dict, kb: repos.Knowledge | None = None) -> FollowUp:
+    """Answers a requester's message while the request waits: a change, an answer, or a reminder."""
     kb = kb or repos.get()
     change = preview_change(text, values)
     if change and (not is_question(text) or _CHANGE_VERB.search(norm(text))):

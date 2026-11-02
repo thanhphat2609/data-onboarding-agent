@@ -13,6 +13,7 @@ STRUCTURED_FIELDS = {"sources", "date_range", "eta", "refresh_frequency"}
 
 
 def extract(text: str, request: dict, asked_fields: list[str], today, first_message: bool) -> dict:
+    """Request fields from a message: rules first, then the model for what the rules missed."""
     found = rule_extract(text, asked_fields, today, first_message=first_message)
     llm = get_llm()
     if llm:
@@ -38,6 +39,7 @@ def _merge(request: dict, found: dict, text: str, incremental: bool) -> dict:
 
 
 def accept_gaps(request: dict, gaps: list[dict]) -> tuple[dict, list[str]]:
+    """Applies the requester's choice to accept gaps; returns the request and the accepted gap keys."""
     request = dict(request)
     accepted = []
     new_starts = [g["available_from"] for g in gaps if g["type"] == "date_range"]
@@ -50,6 +52,7 @@ def accept_gaps(request: dict, gaps: list[dict]) -> tuple[dict, list[str]]:
 
 
 def gap_question(gaps: list[dict], unclear: bool) -> str:
+    """The question that lists the gaps found and how to accept or change them."""
     lines = []
     if unclear:
         lines.append("Sorry, I didn't understand that answer — could you check it again?\n")
@@ -108,6 +111,9 @@ def fields_question(fields: list[str], errors: dict, first: bool, unreadable: st
 
 
 def intake(state: dict) -> dict:
+    """Reads the user's new messages and updates the request, answers to gap questions included.
+    The router then asks for what is missing or moves on.
+    """
     today = get_today(state)
     request = dict(state.get("request") or {})
     gaps = list(state.get("gap") or [])
@@ -178,6 +184,7 @@ def intake(state: dict) -> dict:
 
 
 def ask_user(state: dict) -> dict:
+    """Asks the pending question and waits for the answer (interrupt)."""
     question = state["pending_question"]
     answer = interrupt({"type": "question", "question": question})
     return {

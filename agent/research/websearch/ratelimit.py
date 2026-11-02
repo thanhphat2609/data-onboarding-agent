@@ -8,6 +8,7 @@ import time
 
 class RateLimiter:
     def __init__(self, max_per_minute: int = 10, max_concurrent: int = 5):
+        """At most ``max_per_minute`` calls a minute and ``max_concurrent`` at the same time."""
         self.max_per_minute = max_per_minute
         self._slots = threading.BoundedSemaphore(max_concurrent)
         self._lock = threading.Lock()
@@ -15,6 +16,7 @@ class RateLimiter:
         self._window_start = time.monotonic()
 
     def execute(self, fn, *args, **kwargs):
+        """Runs ``fn`` once the rate and concurrency limits allow it."""
         while True:
             with self._lock:
                 now = time.monotonic()

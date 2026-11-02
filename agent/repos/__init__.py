@@ -59,12 +59,15 @@ class Knowledge:
         )
 
     def jobs_for(self, system: str) -> list[dict]:
+        """The jobs that land data of a source system."""
         return [j for j in self.jobs if j["system"] == system]
 
     def connections_for(self, system: str) -> list[dict]:
+        """The connections of a source system, with their names."""
         return [{"name": n, **c} for n, c in self.connections.items() if c["system"] == system]
 
     def models_for(self, system: str) -> list[dict]:
+        """The dbt models built on a source system."""
         return [m for m in self.models if m.get("system") == system]
 
 
@@ -88,6 +91,7 @@ def _read(repo: str, ref: str, local: str, patterns: list[str], subdir: str = ""
 
 
 def _yaml(text: str) -> dict:
+    """A YAML mapping, or an empty dict when the text isn't one."""
     try:
         doc = yaml.safe_load(text)
     except yaml.YAMLError:
@@ -96,6 +100,9 @@ def _yaml(text: str) -> dict:
 
 
 def parse_ingestion(files: dict[str, str]) -> tuple[dict, dict, list]:
+    """Templates, connections and jobs from the ingestion files; a job whose sink path is not
+    <system>/<schema>/<table> is skipped with a warning.
+    """
     templates, connections, jobs = {}, {}, []
     for path, text in sorted(files.items()):
         doc = _yaml(text)
@@ -124,6 +131,7 @@ def parse_ingestion(files: dict[str, str]) -> tuple[dict, dict, list]:
 
 
 def load() -> Knowledge:
+    """Reads both platform repos; one that can't be read adds a message to ``errors`` instead of failing."""
     kb = Knowledge()
     try:
         files, kb.origin["ingestion"] = _read(config.INGESTION_REPO, config.INGESTION_REF, config.INGESTION_PATH, INGESTION_FILES)
@@ -160,6 +168,7 @@ def get() -> Knowledge:
 
 
 def reload() -> Knowledge:
+    """Reads both repos again and replaces the cached knowledge."""
     global _kb, _loaded_at
     with _lock:
         _kb, _loaded_at = load(), time.monotonic()
@@ -167,6 +176,7 @@ def reload() -> Knowledge:
 
 
 def norm(text: str) -> str:
+    """Lowercase text with whitespace collapsed, for comparing names."""
     return re.sub(r"\s+", " ", text.strip().lower())
 
 

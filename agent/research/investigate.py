@@ -85,6 +85,7 @@ FOLLOW_UP = {
 
 
 def slug(source: str) -> str:
+    """A source name as a file-name-safe slug."""
     return re.sub(r"[^\w]+", "_", norm(source)).strip("_")
 
 
@@ -103,6 +104,7 @@ def links_from_messages(messages: list[dict], source: str, all_sources: list[str
 
 
 def _rank(url: str) -> int:
+    """How much a URL looks like documentation, from words in its host and path."""
     host = urlparse(url).netloc.lower()
     path = urlparse(url).path.lower()
     return sum(h in host for h in DOC_HINTS) * 2 + sum(f"/{h}" in path for h in DOC_HINTS)
@@ -117,6 +119,7 @@ def search_name(source: str, origin: str = "") -> str:
 
 
 def _source_words(source: str) -> list[str]:
+    """The words of a source name that a page must contain to be about it."""
     return [t for t in slug(source).split("_") if len(t) > 2] or [slug(source)]
 
 
@@ -216,6 +219,7 @@ def _docs_host(urls: list[str], source: str, known: list[str] = ()) -> str | Non
 
 
 def _priority(url: str, docs_host: str | None) -> int:
+    """Ranking of a URL: the official docs host first, then documentation-looking URLs."""
     return (urlparse(url).netloc.lower() == docs_host) * 10 + _rank(url)
 
 
@@ -239,6 +243,7 @@ def _top_links(source: str, pasted: list[str], hits: dict, pages: list[dict], do
     first = list(dict.fromkeys([*pasted, *known]))
 
     def score(url: str) -> int:
+        """Ranking of a link: docs host, pages with useful passages, and how often it was found."""
         return _priority(url, docs_host) + 5 * bool(read.get(url, {}).get("passages")) + 3 * len(hits[url]["topics"])
 
     ranked = sorted((u for u in hits if u not in first and u not in off_topic), key=score, reverse=True)
@@ -311,6 +316,7 @@ def _key_passages(pages: list[dict], per_topic: int = 3) -> list[dict]:
 
 
 def _questions(source: str, request: dict, findings: dict) -> list[str]:
+    """The questions for the Data Team that the research couldn't answer."""
     start = (request.get("date_range") or {}).get("start", "?")
     history = [p for p in findings["key_passages"] if p["topic"] == "history" and p["has_number"]]
     qs = [f"Do we already ingest `{source}` anywhere (Fivetran/Airbyte/custom script)? If so, where does it land?"]
@@ -330,6 +336,7 @@ def _questions(source: str, request: dict, findings: dict) -> list[str]:
 
 
 def _llm_findings(source: str, pages: list[dict]) -> dict:
+    """Access methods and a summary from the model, given the best passages of the pages read."""
     llm = get_llm()
     read = [p for p in pages if p.get("passages")]
     if not llm or not read:
@@ -396,6 +403,7 @@ def _research(source: str, request: dict, messages: list[dict], findings: dict) 
     hits: dict[str, dict] = {}
 
     def time_left() -> bool:
+        """True while the research time budget is not used up."""
         return time.monotonic() - started < config.RESEARCH_TIME_BUDGET_S
 
     name = search_name(source, request.get("source_origin", ""))
@@ -410,6 +418,7 @@ def _research(source: str, request: dict, messages: list[dict], findings: dict) 
     max_pages = config.RESEARCH_MAX_PAGES + len(known)  # known docs come on top of the searches' pages
 
     def read(candidates: list[tuple[str, str]], limit: int, round_no: int) -> None:
+        """Fetches the candidate pages within the limits and keeps their useful passages."""
         for url, origin in candidates:
             if limit <= 0 or len(seen) >= max_pages or not time_left():
                 return

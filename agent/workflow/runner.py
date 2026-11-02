@@ -24,6 +24,7 @@ def _session_store(checkpointer) -> SessionStore:
 
 class AgentRunner:
     def __init__(self, checkpointer=None, db_path: str | None = None):
+        """Builds the workflow graph with a checkpointer (PostgreSQL, or SQLite at ``db_path``)."""
         checkpointer = checkpointer or get_checkpointer(db_path)
         self.graph = build_graph(checkpointer)
         self.sessions = _session_store(checkpointer)
@@ -33,6 +34,7 @@ class AgentRunner:
 
     @staticmethod
     def _config(thread_id: str) -> dict:
+        """The LangGraph config that selects a thread."""
         return {"configurable": {"thread_id": thread_id}}
 
     @staticmethod
@@ -53,6 +55,7 @@ class AgentRunner:
         }
 
     def _index(self, thread_id: str, ev: dict | None = None, backfill: bool = False) -> None:
+        """Updates the session list entry of a thread from its current state."""
         snapshot = self.graph.get_state(self._config(thread_id))
         if not snapshot.values:
             return
@@ -100,4 +103,5 @@ class AgentRunner:
         return {"type": "empty"}
 
     def state(self, thread_id: str) -> dict:
+        """The current state values of a thread."""
         return self.graph.get_state(self._config(thread_id)).values

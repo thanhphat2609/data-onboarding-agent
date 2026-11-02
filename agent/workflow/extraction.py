@@ -57,10 +57,12 @@ def clean_description(text: str) -> str:
 
 
 def norm(text: str) -> str:
+    """Unicode-normalised lowercase text, for matching Vietnamese and English."""
     return unicodedata.normalize("NFC", text).strip().lower()
 
 
 def to_date(value) -> date | None:
+    """A date from a date, an ISO string or a date phrase; None if it isn't one."""
     if isinstance(value, date):
         return value
     if not value:
@@ -86,12 +88,14 @@ _UNIT_VI = {"ngày": "day", "tuần": "week", "tháng": "month"}
 
 
 def _add_months(d: date, n: int) -> date:
+    """A date moved by ``n`` months, keeping the day when possible."""
     month = d.month - 1 + n
     year, month = d.year + month // 12, month % 12 + 1
     return date(year, month, min(d.day, calendar.monthrange(year, month)[1]))
 
 
 def _shift(today: date, n: int, unit: str) -> date:
+    """A date moved by ``n`` units of time (``unit`` names the unit)."""
     if unit == "day":
         return today + timedelta(days=n)
     if unit == "week":
@@ -100,6 +104,7 @@ def _shift(today: date, n: int, unit: str) -> date:
 
 
 def _end_of_month(d: date) -> date:
+    """The last day of the date's month."""
     return d.replace(day=calendar.monthrange(d.year, d.month)[1])
 
 
@@ -144,6 +149,7 @@ def relative_date(text: str, today: date, bare: bool = False) -> date | None:
 
 
 def _contains_word(text: str, word: str) -> bool:
+    """True when ``word`` appears as a whole word."""
     return re.search(rf"(?<![\w]){re.escape(word)}(?![\w])", text) is not None
 
 
@@ -153,6 +159,7 @@ def find_sources(text: str) -> list[str]:
 
 
 def find_frequency(text: str) -> str | None:
+    """The refresh frequency a text asks for (daily, weekly...), or None."""
     t = norm(text)
     for freq, aliases in FREQ_ALIASES.items():
         if any(_contains_word(t, a) for a in aliases):
@@ -161,6 +168,7 @@ def find_frequency(text: str) -> str | None:
 
 
 def _date_tokens(text: str, today: date) -> list[date]:
+    """The dates found in a text, including words like ``today``, in order."""
     t = norm(text)
     pattern = "|".join([DATE_RE] + [re.escape(w) for w in TODAY_WORDS])
     out = []
@@ -171,6 +179,7 @@ def _date_tokens(text: str, today: date) -> list[date]:
 
 
 def parse_range(text: str, today: date) -> dict | None:
+    """A ``start`` and ``end`` date range from a text, or None."""
     toks = _date_tokens(text, today)
     if len(toks) >= 2:
         return {"start": toks[0].isoformat(), "end": toks[1].isoformat()}
@@ -189,6 +198,7 @@ _SOURCE_HEDGE_RE = re.compile(
 
 
 def _strip_hedges(text: str) -> str:
+    """Removes hedging words (``maybe``, ``I think``) around a source name."""
     return _SOURCE_HEDGE_RE.sub("", text).strip()
 
 
@@ -200,6 +210,7 @@ def clean_source(text: str) -> str:
     """Free-text source name without guesses: "google (maybe bigquery or api from google)" -> "google",
     while a product in parentheses stays: "google (search console)" -> "google search console"."""
     def paren(m: re.Match) -> str:
+        """Keeps a parenthesis only when it doesn't express doubt."""
         inner = m.group(1).strip()
         return "" if _UNSURE_RE.search(inner) else f" {inner}"
 
@@ -249,6 +260,7 @@ def parse_field(field: str, value: str, today: date):
 
 
 def _label_to_field(label: str) -> str | None:
+    """The request field a label like ``eta:`` stands for, or None."""
     label = norm(label)
     for field, aliases in FIELD_LABELS.items():
         if any(label == a or label.startswith(a) for a in aliases):
@@ -320,6 +332,9 @@ def rule_extract(text: str, asked_fields: list[str] | None, today: date, first_m
 
 
 def llm_extract(llm, system_prompt: str, request: dict, missing: list[str], text: str, today: date) -> dict:
+    """Request fields the model finds in ``text``, cleaned like the rule-based extraction.
+    A field it can't read is left out, never guessed.
+    """
     import json
 
     user = (
@@ -390,10 +405,12 @@ def validate(request: dict, today: date) -> tuple[dict, dict[str, str]]:
 
 
 def missing_fields(request: dict) -> list[str]:
+    """The required fields of a request that are still empty."""
     return [f for f in REQUIRED_FIELDS if not request.get(f)]
 
 
 def is_yes(text: str) -> bool:
+    """True for an answer that agrees (ok, yes, đồng ý...) and doesn't negate."""
     t = norm(text)
     return any(_contains_word(t, w) for w in YES_WORDS) and not re.search(r"\b(không|ko|no|not)\b", t)
 

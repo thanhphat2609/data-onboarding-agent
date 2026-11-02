@@ -79,6 +79,7 @@ def run_sample(sample: dict, runner: AgentRunner | None = None) -> dict:
 
 
 def check(expected: dict, obs: dict) -> list[str]:
+    """The mismatches between what a sample expects and what the workflow did; none means a pass."""
     errs = []
     if obs["status"] != "done":
         errs.append(f"flow did not finish (stuck at: {obs['status']})")
@@ -103,6 +104,7 @@ def compare_team(team: dict, obs: dict) -> list[dict]:
     diffs = []
 
     def diff(check: str, agent, actual):
+        """Records a difference between the agent's answer and the team's."""
         if agent != actual:
             diffs.append({"check": check, "agent": agent, "team": actual})
 
@@ -158,6 +160,9 @@ def write_report(folder: Path, results: list[tuple[Path, dict, dict]]) -> Path:
 
 
 def main(folder: Path) -> int:
+    """Runs every sample of ``folder`` through the workflow, prints PASS or FAIL, writes report.md and mistakes.csv.
+    Returns 1 if any sample fails.
+    """
     files = sorted(p for p in folder.glob("*.yaml") if not p.name.startswith("_"))
     if not files:
         print(f"No samples in {folder}")

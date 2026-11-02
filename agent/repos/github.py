@@ -14,6 +14,7 @@ _session.mount(
 
 
 def _get(url: str, token: str, raw: bool = False) -> requests.Response:
+    """A GET on the GitHub API with the token; raw=True asks for the file's raw content."""
     headers = {"Accept": "application/vnd.github.raw" if raw else "application/vnd.github+json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -40,4 +41,5 @@ def tree(repo: str, ref: str, token: str) -> list[str]:
 
 
 def file(repo: str, ref: str, path: str, token: str) -> str:
+    """The text of one file of a repo at a ref."""
     return _get(f"{API}/repos/{repo}/contents/{path}?ref={ref}", token, raw=True).text

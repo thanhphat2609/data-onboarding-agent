@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 
 def _path(kind: str, key: str) -> Path:
+    """The cache file of a key: a hash of the key under ``outputs/cache/research/<kind>``."""
     return config.OUTPUT_DIR / "cache" / "research" / kind / (hashlib.sha256(key.encode("utf-8")).hexdigest()[:32] + ".json")
 
 
@@ -34,6 +35,7 @@ def get(kind: str, key: str):
 
 
 def put(kind: str, key: str, value) -> None:
+    """Stores a value; a full or read-only disk only costs the cache."""
     if config.RESEARCH_CACHE_DAYS <= 0:
         return
     path = _path(kind, key)

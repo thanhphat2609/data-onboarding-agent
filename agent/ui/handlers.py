@@ -145,6 +145,7 @@ def _result(values: dict) -> tuple:
     outputs = values.get("outputs") or {}
 
     def path(key: str) -> str | None:
+        """The absolute path of an output file if it exists, for the download buttons."""
         p = config.ROOT / outputs[key] if outputs.get(key) else None
         return str(p) if p and p.exists() else None
 
@@ -225,6 +226,9 @@ def _run(thread_id: str, graph_input, history: list):
 
 
 def on_send(message: str, thread_id: str, history: list, on_behalf: str, request: gr.Request):
+    """Handles a chat message: answers the open question, checks a draft, or starts a new request.
+    Yields chat updates.
+    """
     message = (message or "").strip()
     if not message:
         yield SKIP
@@ -296,6 +300,7 @@ def on_approve_draft(thread_id: str, history: list, request: gr.Request):
 
 
 def on_example(evt: gr.SelectData, thread_id: str, history: list, on_behalf: str, request: gr.Request):
+    """Sends the example the user clicked as a message."""
     text = evt.value.get("text", "") if isinstance(evt.value, dict) else str(evt.value)
     yield from on_send(text, thread_id, history, on_behalf, request)
 
@@ -328,6 +333,7 @@ def _review_queue() -> list[tuple[str, str]]:
 
 
 def on_review_refresh(request: gr.Request):
+    """Reloads the Data Team's list of requests waiting for review."""
     _require_data_team(request)
     choices = _review_queue()
     msg = f"**{len(choices)}** request(s) waiting for review." if choices else "Nothing waiting for review. 🎉"
@@ -335,6 +341,7 @@ def on_review_refresh(request: gr.Request):
 
 
 def on_review_open(thread_id: str, request: gr.Request):
+    """Shows one request waiting for review, with its feasibility and research."""
     _require_data_team(request)
     if not thread_id:
         return gr.update(visible=False), "", "", ""
@@ -347,7 +354,11 @@ def on_review_open(thread_id: str, request: gr.Request):
 
 
 def on_review_decision(action: str):
+    """Builds the handler of the Data Team's approve or send-back button.
+    The handler needs the Data Team role and a request that is still waiting for review.
+    """
     def handler(thread_id: str, comment: str, request: gr.Request):
+        """Approves or sends back the open request, then refreshes the queue."""
         _require_data_team(request)
         comment = (comment or "").strip()
         keep = gr.update()
@@ -394,10 +405,12 @@ def _session_choices(user: str) -> list[tuple[str, str]]:
 
 
 def on_refresh_sessions(request: gr.Request):
+    """Reloads the user's list of earlier requests."""
     return gr.update(choices=_session_choices(_user(request)), value=None)
 
 
 def on_resume(picked: str, pasted: str, request: gr.Request):
+    """Opens an earlier request, picked from the list or by pasting its id."""
     thread_id = (pasted or "").strip() or (picked or "")
     values = runner.state(thread_id) if thread_id else {}
     if not values or not _owns(thread_id, request):  # someone else's session looks the same as a missing one
@@ -410,6 +423,7 @@ def on_resume(picked: str, pasted: str, request: gr.Request):
 # ---------- LLM settings ----------
 
 def on_refresh_models(host: str, api_key: str, current: str, request: gr.Request):
+    """Lists the models of an Ollama server for the settings tab."""
     _require_data_team(request)
     try:
         models = llm.list_models(host, api_key)
@@ -424,6 +438,7 @@ def on_refresh_models(host: str, api_key: str, current: str, request: gr.Request
 
 
 def on_test(host: str, api_key: str, model: str, request: gr.Request):
+    """Checks that the model answers and reports the result."""
     _require_data_team(request)
     if not model:
         return "Pick a model before testing."
@@ -435,12 +450,14 @@ def on_test(host: str, api_key: str, model: str, request: gr.Request):
 
 
 def on_apply(host: str, api_key: str, model: str, request: gr.Request):
+    """Uses the chosen model from now on."""
     _require_data_team(request)
     llm.configure(host, model, api_key)
     return f"**In use:** {llm.status()}", _header_html()
 
 
 def on_disable(host: str, request: gr.Request):
+    """Turns the model off; the agent then uses rules only."""
     _require_data_team(request)
     llm.configure(host, "")
     return f"**In use:** {llm.status()}", _header_html()
@@ -449,6 +466,7 @@ def on_disable(host: str, request: gr.Request):
 # ---------- repositories ----------
 
 def _repos_md() -> str:
+    """Markdown with what the agent read from the platform repos and any errors."""
     kb = repos.get()
     lines = [
         f"**data-onboarding-ingestion**: `{kb.origin.get('ingestion', 'not read')}`  ",
@@ -463,6 +481,7 @@ def _repos_md() -> str:
 
 
 def on_reload_repos(request: gr.Request):
+    """Reads the platform repos again."""
     _require_data_team(request)
     repos.reload()
     return _repos_md(), _header_html()

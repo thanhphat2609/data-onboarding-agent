@@ -18,17 +18,20 @@ log = logging.getLogger(__name__)
 
 
 def _headers(api_key: str | None) -> dict:
+    """The Authorization header for an Ollama server behind an API key; none without a key."""
     return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
 
 class OllamaLLM:
     def __init__(self, model: str, host: str | None = None, api_key: str | None = None, timeout: int = 180):
+        """A client for one model on an Ollama server (config.OLLAMA_HOST by default)."""
         self.model = model
         self.host = (host or config.OLLAMA_HOST).rstrip("/")
         self.api_key = config.OLLAMA_API_KEY if api_key is None else api_key
         self.timeout = timeout
 
     def chat(self, messages: list[dict], json_mode: bool = False, tools: list[dict] | None = None) -> dict:
+        """One non-streaming chat call; with ``json_mode`` the answer is JSON, with ``tools`` it may call them."""
         payload = {"model": self.model, "messages": messages, "stream": False, "options": {"temperature": 0}}
         if json_mode:
             payload["format"] = "json"
@@ -39,10 +42,12 @@ class OllamaLLM:
         return resp.json()["message"]
 
     def complete(self, system: str, user: str) -> str:
+        """The model's text answer to a system and a user message."""
         msg = self.chat([{"role": "system", "content": system}, {"role": "user", "content": user}])
         return msg.get("content", "").strip()
 
     def complete_json(self, system: str, user: str) -> dict:
+        """The model's answer parsed as JSON; an empty dict when it can't be parsed."""
         msg = self.chat([{"role": "system", "content": system}, {"role": "user", "content": user}], json_mode=True)
         try:
             return json.loads(msg.get("content") or "{}")
@@ -53,6 +58,7 @@ class OllamaLLM:
 
 @lru_cache(maxsize=1)
 def get_llm() -> OllamaLLM | None:
+    """The configured model client, or None when no model is set (the agent then uses rules only)."""
     if not config.OLLAMA_MODEL:
         return None
     try:
@@ -87,6 +93,7 @@ def ping(host: str, model: str, api_key: str = "") -> tuple[str, float]:
 
 
 def status() -> str:
+    """A line saying which model is in use, or that there is none."""
     llm = get_llm()
     if llm:
         return f"LLM: `{llm.model}` @ {llm.host}"
@@ -96,6 +103,7 @@ def status() -> str:
 
 
 def load_prompt(name: str) -> str:
+    """The text of a prompt file in ``agent/prompts``."""
     return (config.PROMPT_DIR / f"{name}.md").read_text(encoding="utf-8")
 
 

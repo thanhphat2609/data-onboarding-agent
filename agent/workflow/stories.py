@@ -13,6 +13,7 @@ from agent import config
 
 
 def _ref(rec: dict | None) -> str:
+    """`` (reference)`` of a recommendation, or nothing."""
     return f" ({rec['ref']})" if rec and rec.get("ref") else ""
 
 
@@ -22,10 +23,12 @@ def _file_name(src: dict) -> str:
 
 
 def _sources(feas: dict) -> list[dict]:
+    """The per-source feasibility entries of a request."""
     return feas.get("sources") or []
 
 
 def _header(state: dict, n: int, kind: str, title: str, repo: str, blocked_by: str) -> list[str]:
+    """The heading block shared by the three User Stories: id, repo, dependency and go-live."""
     request = state["request"]
     return [
         f"# {title}",
@@ -39,6 +42,7 @@ def _header(state: dict, n: int, kind: str, title: str, repo: str, blocked_by: s
 
 
 def _spike(state: dict, research: dict) -> list[str]:
+    """User Story 1: a spike to understand the sources before building."""
     request, feas = state["request"], state["feasibility"]
     start = (request.get("date_range") or {}).get("start", "?")
     names = ", ".join(s["source"] for s in _sources(feas))
@@ -99,6 +103,7 @@ def _spike(state: dict, research: dict) -> list[str]:
 
 
 def _ingestion_steps(request: dict, src: dict) -> list[str]:
+    """What to build in ingestion for one source, depending on its recommendation."""
     rec, system = src.get("recommendation"), _file_name(src)
     freq = request.get("refresh_frequency", "daily")
     if rec is None:
@@ -133,6 +138,7 @@ def _ingestion_steps(request: dict, src: dict) -> list[str]:
 
 
 def _ingestion(state: dict) -> list[str]:
+    """User Story 2: land the sources in the lake."""
     request, feas = state["request"], state["feasibility"]
     dr = request.get("date_range") or {}
     freq = request.get("refresh_frequency", "daily")
@@ -173,6 +179,7 @@ def _ingestion(state: dict) -> list[str]:
 
 
 def _transformation(state: dict) -> list[str]:
+    """User Story 3: build the dataset in dbt."""
     request, feas = state["request"], state["feasibility"]
     dr = request.get("date_range") or {}
     grain, freq = request.get("grain", "?"), request.get("refresh_frequency", "daily")

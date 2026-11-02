@@ -52,6 +52,7 @@ MIN_TRAFILATURA_CHARS = 200  # less than this: probably a page Trafilatura doesn
 
 
 def _words(value) -> set[str]:
+    """The lowercase words of a text or a list of texts."""
     text = " ".join(value) if isinstance(value, list) else str(value or "")
     return {w for w in re.split(r"[\s_\-]+", text.lower()) if w}
 
@@ -72,6 +73,7 @@ def html_to_text(html: str, max_chars: int = 500_000) -> tuple[str, str]:
 
 
 def _rules_to_text(html: str, max_chars: int) -> tuple[str, str]:
+    """Page text and title from HTML by rules, dropping menus and other boilerplate."""
     soup = BeautifulSoup(html, "html.parser")
     title = soup.title.get_text(" ", strip=True) if soup.title else ""
     for tag in soup(REMOVE_TAGS):
@@ -97,6 +99,7 @@ def _rules_to_text(html: str, max_chars: int) -> tuple[str, str]:
 
 
 def clean_text(text: str, max_chars: int = 500_000) -> str:
+    """Removes data and image URLs from text and cuts it at ``max_chars``."""
     text = _DATA_URL_RE.sub("", text)
     text = _IMAGE_URL_RE.sub("", text)
     lines = (re.sub(r"[ \t\r\f\v]+", " ", line).strip() for line in text.split("\n"))

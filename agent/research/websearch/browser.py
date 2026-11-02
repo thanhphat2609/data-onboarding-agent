@@ -46,6 +46,7 @@ def get_html(url: str, timeout: float = 8.0, wait_for: str | None = None) -> tup
     from playwright.sync_api import sync_playwright
 
     def load(extra_args: list[str]) -> tuple[str, str]:
+        """Opens the page in headless Chromium, blocking heavy resources; returns its HTML and title."""
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage", *extra_args])
             try:

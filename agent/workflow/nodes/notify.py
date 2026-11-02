@@ -6,6 +6,7 @@ from agent.workflow.nodes.common import format_request, output_dir
 
 
 def notify(state: dict) -> dict:
+    """Posts the request to the Data Team's Teams channel once; returns the thread reference."""
     if state.get("thread_ref"):
         return {}
     request = state["request"]

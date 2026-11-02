@@ -27,10 +27,13 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
       - name: Install requirements
-        run: pip install -r requirements.txt ruff==0.17.2 pytest==9.1.1
+        run: pip install -r requirements.txt ruff==0.17.2 pytest==9.1.1 vulture==2.14
       # Only errors that break at runtime: syntax errors, undefined names, invalid comparisons.
       - name: Ruff (errors only)
         run: ruff check --no-cache --select E9,F63,F7,F82 .
+      # Unused functions, classes and variables (config in pyproject.toml): delete them, or say who uses them.
+      - name: Vulture (dead code)
+        run: vulture
       - name: Compile
         run: python -m compileall -q agent app.py
       # Builds the graph and the UI without starting the server; no network or database needed.

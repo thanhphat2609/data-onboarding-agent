@@ -17,6 +17,7 @@ LEAD_TIME_DAYS = {"existing_model": 1, "landed": 3, "new_job": 5, "new_connectio
 
 
 def _repo_ref(repo: str, path: str) -> str:
+    """``repo: path`` with the repo's short name, as a reference in the report."""
     return f"{repo.split('/')[-1]}: {path}"
 
 
@@ -36,6 +37,7 @@ def _model_tables(model: dict) -> set[str]:
 
 
 def assess_source(source: str, request: dict, models: list[dict], today, kb: repos.Knowledge) -> dict:
+    """Feasibility of one requested source: an existing dbt model, an existing job, a new job or a gap, plus risks."""
     eta = to_date(request["eta"])
     system, stype = repos.parse_source(source, kb)
     result = {"source": source, "system": system, "recommendation": None, "gap": None, "risks": []}
@@ -108,6 +110,9 @@ KIND_TEXT = {
 
 
 def feasibility(state: dict) -> dict:
+    """Assesses every source of the request, minus the gaps the requester accepted.
+    Overall: gap, feasible_with_risks or feasible.
+    """
     today = get_today(state)
     request = state["request"]
     accepted = set(state.get("accepted_gaps") or [])

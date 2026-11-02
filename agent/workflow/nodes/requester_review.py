@@ -8,6 +8,7 @@ from agent.workflow.nodes.draft_us import draft_preview
 
 
 def requester_review(state: dict) -> dict:
+    """Shows the requester the draft (interrupt). Approval moves on; a comment goes back to intake as a change."""
     decision = interrupt(
         {
             "type": "draft",

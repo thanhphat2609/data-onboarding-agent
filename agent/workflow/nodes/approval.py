@@ -5,6 +5,7 @@ from agent.workflow.extraction import is_yes
 
 
 def approval(state: dict) -> dict:
+    """Waits for the Data Team (interrupt). Approval moves on; a comment goes back to intake as a change."""
     decision = interrupt(
         {
             "type": "approval",

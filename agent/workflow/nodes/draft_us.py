@@ -21,6 +21,7 @@ def current_research(state: dict) -> dict:
 
 
 def research_section(research: dict) -> list[str]:
+    """Markdown lines of the unverified web research for sources the platform can't onboard yet; none without research."""
     if not research:
         return []
     lines = [
@@ -110,6 +111,7 @@ def _pipeline_steps(request: dict, src: dict, research: dict | None = None) -> l
 
 
 def render_user_story(state: dict, title: str, description: str, extra_ac: list[str]) -> str:
+    """Markdown of the parent User Story: the request, the feasibility per source and the research."""
     request = state["request"]
     feas = state["feasibility"]
     research = current_research(state)
@@ -172,12 +174,14 @@ def render_user_story(state: dict, title: str, description: str, extra_ac: list[
 
 
 def default_title(request: dict) -> str:
+    """A User Story title from the dataset description, cut at 80 characters."""
     desc = request["dataset_description"]
     short = desc if len(desc) <= 80 else desc[:80].rsplit(" ", 1)[0] + "…"
     return f"[Data Request] {short}"
 
 
 def default_description(request: dict, approved: bool) -> str:
+    """A description from the request fields, used when no model writes one."""
     return (
         f"Requested by {request['consumers']}: \"{request['dataset_description']}\". Sources: {', '.join(request['sources'])}. "
         f"Collected through the Data Onboarding Agent" + (" and approved." if approved else ".")
@@ -204,6 +208,9 @@ def draft_preview(state: dict) -> dict:
 
 
 def draft_us(state: dict) -> dict:
+    """Writes the User Stories, the parent user_story.md, request.json, feasibility.json and a zip
+    into the request's output folder.
+    """
     request = state["request"]
     title = default_title(request)
     description = default_description(request, approved=True)

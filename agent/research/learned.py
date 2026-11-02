@@ -16,6 +16,7 @@ _store = None
 
 
 def use(store) -> None:
+    """Sets the session store that remembers which documentation pages were approved."""
     global _store
     _store = store
 

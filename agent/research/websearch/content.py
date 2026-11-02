@@ -34,15 +34,18 @@ BLOCK_MARKERS = ("Please enable JavaScript", "Access Denied", "403 Forbidden", "
 
 class FetchError(Exception):
     def __init__(self, message: str, status: int | None = None, body: str = "", browser_may_help: bool = False):
+        """A failed fetch, with the HTTP status and body, and whether a browser might do better."""
         super().__init__(message)
         self.status, self.body, self.browser_may_help = status, body, browser_may_help
 
 
 def _low_quality(text: str) -> bool:
+    """True for a page that is too short or looks like a block or captcha page."""
     return len(text.strip()) < 100 or any(m in text for m in BLOCK_MARKERS)
 
 
 def _http(url: str, timeout: float, max_chars: int) -> Page:
+    """Fetches a page with plain HTTP, at most ``max_chars`` of it."""
     try:
         resp = requests.get(url, headers=HEADERS, timeout=timeout, stream=True)
     except requests.Timeout as exc:
@@ -65,6 +68,7 @@ def _http(url: str, timeout: float, max_chars: int) -> Page:
 
 
 def _browser_may_help(exc: FetchError, url: str) -> bool:
+    """True when a headless browser might get a page that plain HTTP couldn't."""
     host = urlparse(url).netloc.lower()
     return (
         exc.browser_may_help

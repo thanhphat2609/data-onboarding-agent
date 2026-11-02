@@ -4,6 +4,7 @@ from agent.repos.lookup import search_models
 
 
 def catalog_check(state: dict) -> dict:
+    """dbt models that already match the request (score above CATALOG_MIN_SCORE): the data may exist already."""
     request = state["request"]
     query = f"{request.get('dataset_description', '')} {request.get('grain', '')}"
     kb = repos.get()

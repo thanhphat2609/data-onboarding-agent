@@ -13,10 +13,12 @@ STOPWORDS = {
 
 
 def tokenize(text: str) -> set[str]:
+    """The meaningful lowercase words of a text, without stop words."""
     return {t for t in re.split(r"[^\w]+", norm(text)) if len(t) > 1 and t not in STOPWORDS}
 
 
 def singular(token: str) -> str:
+    """A rough singular of a word (``orders`` is ``order``)."""
     return token[:-1] if len(token) > 3 and token.endswith("s") and not token.endswith("ss") else token
 
 

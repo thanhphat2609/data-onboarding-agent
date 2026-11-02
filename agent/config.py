@@ -22,6 +22,7 @@ TRANSFORMATION_DBT_DIR = os.getenv("TRANSFORMATION_DBT_DIR", "")
 # PLATFORM_GITHUB_TOKEN wins: in Codespaces GITHUB_TOKEN is preset to a token for the codespace's own repo only,
 # and a Codespaces secret can't be named GITHUB_*.
 def github_token() -> str:
+    """The token for reading the platform repos: PLATFORM_GITHUB_TOKEN, else GITHUB_TOKEN."""
     return os.getenv("PLATFORM_GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN", "")
 
 

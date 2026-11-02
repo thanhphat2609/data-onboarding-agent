@@ -30,12 +30,14 @@ from agent.state import AgentState
 
 
 def route_intake(state: dict) -> str:
+    """Ask the user when a question is pending, otherwise check the catalog."""
     if state.get("pending_question"):
         return "ask_user"
     return "catalog_check"
 
 
 def route_feasibility(state: dict) -> str:
+    """Back to intake when there are gaps, otherwise research the sources."""
     return "intake" if state.get("gap") else "investigate_source"
 
 
@@ -47,10 +49,14 @@ def route_requester_review(state: dict) -> str:
 
 
 def route_approval(state: dict) -> str:
+    """Draft the User Stories once approved, otherwise back to intake with the comment."""
     return "draft_us" if state.get("approved") else "intake"
 
 
 def build_graph(checkpointer=None):
+    """The LangGraph workflow: intake, catalog check, feasibility, source research, requester review, Data Team
+    approval, User Stories, summary. Questions and edits loop back to intake.
+    """
     g = StateGraph(AgentState)
     g.add_node("intake", intake)
     g.add_node("ask_user", ask_user)
@@ -92,6 +98,7 @@ def get_checkpointer(db_path: str | None = None):
 
 def _postgres_checkpointer(url: str):
     # Imported here so SQLite-only setups (Colab, tests) don't need psycopg.
+    """A LangGraph checkpointer on PostgreSQL; imported here so SQLite-only setups need no psycopg."""
     import psycopg
     from langgraph.checkpoint.postgres import PostgresSaver
     from psycopg.rows import dict_row

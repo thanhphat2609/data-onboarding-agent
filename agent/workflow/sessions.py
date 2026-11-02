@@ -20,6 +20,7 @@ _COLUMNS = "thread_id, request_id, created_by, requested_by, reviewed_by, review
 
 
 def _schema(ts: str) -> list[str]:
+    """The SQL statements that create the session tables; ``ts`` is the timestamp column type."""
     return [
         f"""CREATE TABLE IF NOT EXISTS sessions (
             thread_id     TEXT PRIMARY KEY,
@@ -58,6 +59,7 @@ class SessionStore:
     """Backed by a sqlite3 connection or a psycopg ConnectionPool. SQL is written with `?` placeholders."""
 
     def __init__(self, sqlite_conn: sqlite3.Connection | None = None, pg_pool=None):
+        """A store on SQLite (one shared connection) or on a PostgreSQL pool."""
         self._sqlite, self._pg = sqlite_conn, pg_pool
         self._lock = threading.Lock()  # one sqlite3 connection is shared by Gradio's worker threads
         if self._sqlite is not None:
@@ -66,6 +68,7 @@ class SessionStore:
             self._run(sql)
 
     def _run(self, sql: str, params: tuple = ()) -> list[dict]:
+        """Runs one statement on either database; returns the rows as dicts."""
         if self._pg is not None:
             with self._pg.connection() as conn:
                 cur = conn.execute(sql.replace("?", "%s"), params)
@@ -104,12 +107,14 @@ class SessionStore:
         )
 
     def record_review(self, thread_id: str, reviewer: str, action: str) -> None:
+        """Records who reviewed a request and what they decided."""
         self._run(
             "UPDATE sessions SET reviewed_by = ?, review_action = ?, reviewed_at = ? WHERE thread_id = ?",
             (reviewer, action, self._now(), thread_id),
         )
 
     def get(self, thread_id: str) -> dict | None:
+        """One session row by thread id, or None."""
         rows = self._run(f"SELECT {_COLUMNS} FROM sessions WHERE thread_id = ?", (thread_id,))
         return rows[0] if rows else None
 
@@ -151,6 +156,7 @@ class SessionStore:
         )
 
     def source_docs(self, source: str, limit: int = 5) -> list[dict]:
+        """The documentation pages known for a source, approved ones first."""
         return self._run(
             "SELECT url, title, approved FROM source_docs WHERE source = ? ORDER BY approved DESC, last_approved_at DESC LIMIT ?",
             (source, limit),
@@ -159,6 +165,7 @@ class SessionStore:
     # ---------- self-registered requesters (agent/auth.py) ----------
 
     def requester_hash(self, email: str) -> str | None:
+        """The stored password hash of a requester, or None."""
         rows = self._run("SELECT password_hash FROM requesters WHERE email = ?", (email,))
         return rows[0]["password_hash"] if rows else None
 

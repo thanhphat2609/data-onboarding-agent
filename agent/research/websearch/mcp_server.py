@@ -19,6 +19,7 @@ server = MCPServer("web-search", version="0.2.0-python")
 
 
 def _truncate(text: str, max_length: int | None) -> str:
+    """Cuts text at ``max_length`` characters and says so."""
     if max_length and max_length > 0 and len(text) > max_length:
         return text[:max_length] + f"\n\n[Content truncated at {max_length} characters]"
     return text

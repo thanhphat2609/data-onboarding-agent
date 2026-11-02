@@ -9,6 +9,7 @@ from agent.state import REQUIRED_FIELDS
 # ---------- HTML helpers ----------
 
 def _esc(text) -> str:
+    """HTML-escaped text."""
     return html.escape(str(text or ""))
 
 
@@ -19,10 +20,12 @@ def _inline(text: str) -> str:
 
 
 def _pill(text: str, tone: str = "neutral") -> str:
+    """A small coloured label."""
     return f'<span class="pill pill-{tone}">{_esc(text)}</span>'
 
 
 def _header_html() -> str:
+    """The page header, with the model in use."""
     model = llm.get_llm()
     model_pill = _pill(f"● {model.model}", "green") if model else _pill("○ Rule-based (no LLM)")
     kb = repos.get()
@@ -60,6 +63,7 @@ NODE_STEP = {
 
 
 def _stage(ev: dict, values: dict) -> str:
+    """The step of the stepper that a request is at, from its state."""
     if ev["type"] == "done":
         return "complete"
     if ev["type"] == "draft":
@@ -72,6 +76,7 @@ def _stage(ev: dict, values: dict) -> str:
 
 
 def _stepper_html(stage: str) -> str:
+    """The stepper (describe, check, review, approval, done) with the current step marked."""
     keys = [k for k, _ in STEPS]
     current = len(keys) if stage == "complete" else keys.index(stage)
     items = []
@@ -99,6 +104,7 @@ FIELD_NAMES = {
 
 
 def _field_html(field: str, value) -> str:
+    """One request field as HTML; sources become labels."""
     if field == "sources":
         return " ".join(_pill(s.upper() if len(s) <= 5 else s.title(), "blue") for s in value)
     if field == "date_range":
@@ -133,6 +139,7 @@ OVERALL = {
 
 
 def _research_html(f: dict) -> str:
+    """The web research of a source as HTML: counts, links and findings."""
     searched = f'{len(f.get("searches", []))} search(es) in {f.get("rounds") or 1} round(s), ' if f.get("searches") else ""
     parts = [f'<div class="meta">Web research: {searched}{f.get("pages_read", 0)} page(s) read, unverified.</div>']
     if f.get("summary"):
@@ -159,6 +166,7 @@ KIND_PILL = {
 
 
 def _source_html(src: dict, research: dict | None) -> str:
+    """One source with its feasibility recommendation and research."""
     name = f'<b>{_esc(src["source"])}</b>'
     rec = src.get("recommendation")
     if not rec:

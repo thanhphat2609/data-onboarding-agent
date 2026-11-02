@@ -33,6 +33,7 @@ from agent.ui.views import _header_html, _request_html, _stepper_html
 
 
 def build_ui() -> gr.Blocks:
+    """The Gradio app: the requester's chat and the Data Team's tabs (hidden until a login says who is there)."""
     with gr.Blocks(title="Data Onboarding Agent") as demo:
         thread_state = gr.State("")
         header = gr.HTML(_header_html())

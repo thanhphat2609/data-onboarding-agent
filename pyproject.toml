@@ -1,0 +1,13 @@
+# Tool settings only; the app is not a package (requirements.txt lists what it needs).
+
+# Dead code finder: `vulture` in CI lists functions, classes and variables that nothing uses. Delete what it finds.
+# What it can't see is listed here, with who uses it.
+[tool.vulture]
+paths = ["agent", "app.py"]
+min_confidence = 60
+# The keys of the workflow state are read by name (state["x"]), which vulture can't follow.
+exclude = ["agent/state.py"]
+ignore_names = [
+  "TOOLS", "TOOL_SCHEMAS",  # the tool-calling test in notebooks/
+  "row_factory",  # sqlite3 connection setting
+]

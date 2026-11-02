@@ -10,6 +10,9 @@ from agent.research.investigate import draft_source_notes, investigate, slug
 
 
 def investigate_source(state: dict) -> dict:
+    """Researches the public docs of each source the platform can't onboard yet, once per source,
+    and writes source_notes_<source>.yaml.
+    """
     research = dict(state.get("research") or {})
     kb = repos.get()
     todo = [

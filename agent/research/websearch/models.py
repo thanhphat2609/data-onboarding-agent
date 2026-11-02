@@ -27,4 +27,5 @@ class Page:
 
     @property
     def word_count(self) -> int:
+        """The number of words of the page's content."""
         return len(self.content.split())

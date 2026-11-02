@@ -27,6 +27,7 @@ LOGIN_MESSAGE = (
 
 
 def _pairs(lines) -> dict[str, str]:
+    """``key=value`` lines as a dict."""
     accounts = {}
     for line in lines:
         line = line.strip()
@@ -46,16 +47,19 @@ def accounts() -> dict[str, str]:
 
 
 def enabled() -> bool:
+    """True when any account is configured, so the UI asks for a login."""
     return bool(accounts())
 
 
 def hash_password(password: str) -> str:
+    """A salted scrypt hash of the password, in the format ``verify_password`` reads."""
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(password.encode(), salt=salt, n=_N, r=_R, p=_P)
     return f"scrypt${_N}${_R}${_P}${salt.hex()}${digest.hex()}"
 
 
 def verify_password(password: str, stored: str) -> bool:
+    """True when the password matches a stored hash; False for a malformed hash."""
     try:
         _, n, r, p, salt, digest = stored.split("$")
         got = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=int(n), r=int(r), p=int(p))
@@ -88,6 +92,7 @@ def known(username: str, store=None) -> bool:
 
 
 def data_team() -> set[str]:
+    """The lowercase emails of the Data Team (config.DATA_TEAM)."""
     return {u.strip().lower() for u in config.DATA_TEAM.split(",") if u.strip()}
 
 

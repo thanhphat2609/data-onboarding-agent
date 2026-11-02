@@ -14,6 +14,7 @@ LAYERS = ("staging", "intermediate", "marts", "mart")
 
 
 def infer_system(name: str, path: str = "") -> str | None:
+    """The source system of a dbt model from its name (``stg_crm__customers`` is ``crm``) or its path."""
     if m := re.match(r"^(?:stg|int|fct|dim|base)_([a-z0-9]+)__", name):
         return m.group(1)
     parts = list(PurePosixPath(path).parts)
@@ -24,6 +25,7 @@ def infer_system(name: str, path: str = "") -> str | None:
 
 
 def infer_layer(parts: list[str], fallback: str = "unknown") -> str:
+    """The dbt layer (staging, intermediate, mart...) from the folders of a path, else ``fallback``."""
     for layer in LAYERS:
         if layer in parts:
             return "mart" if layer.startswith("mart") else layer
@@ -31,6 +33,7 @@ def infer_layer(parts: list[str], fallback: str = "unknown") -> str:
 
 
 def _entry(name: str, description: str, columns: list[str], tags: list[str], meta: dict, layer: str, path: str) -> dict:
+    """One model as the dict the rest of the agent uses."""
     return {
         "name": name,
         "system": meta.get("source") or infer_system(name, path),
@@ -44,6 +47,7 @@ def _entry(name: str, description: str, columns: list[str], tags: list[str], met
 
 
 def models_from_manifest(manifest: dict) -> list[dict]:
+    """The models listed in a dbt ``manifest.json``."""
     models = []
     for node in manifest.get("nodes", {}).values():
         if node.get("resource_type") != "model":
@@ -83,6 +87,7 @@ def models_from_schema_files(files: dict[str, str]) -> list[dict]:
 
 
 def is_schema_file(path: str) -> bool:
+    """True for a ``.yml`` or ``.yaml`` file under ``models/``."""
     p = PurePosixPath(path)
     return "models" in p.parts and p.suffix in (".yml", ".yaml")
 

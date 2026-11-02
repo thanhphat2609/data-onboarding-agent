@@ -5,6 +5,7 @@ from agent.workflow.nodes.draft_us import current_research
 
 
 def _questions(research: dict) -> list[str]:
+    """The Data Team's open questions about sources under research, as Markdown lines."""
     if not research:
         return []
     lines = ["", "**Questions for the Data Team** (sources the platform can't onboard yet; web research in the User Story, unverified):"]
@@ -16,6 +17,7 @@ def _questions(research: dict) -> list[str]:
 
 
 def summary(state: dict) -> dict:
+    """Writes summary.md: the request, the feasibility, the recommendations and the files produced."""
     feas = state["feasibility"]
     outputs = dict(state.get("outputs") or {})
     recs = []
