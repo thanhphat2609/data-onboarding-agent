@@ -35,9 +35,9 @@ Secrets and variables are per repository: set them here, in data-onboarding-inge
 | Name | Example | What it is |
 |---|---|---|
 | `PROD_SSH_PRIVATE_KEY` | `-----BEGIN OPENSSH PRIVATE KEY-----`<br>`b3BlbnNzaC1rZXktdjEAAAAA...`<br>`-----END OPENSSH PRIVATE KEY-----` | Whole content of the private key file, including the BEGIN/END lines. Made once: `ssh-keygen -t ed25519 -C github-deploy -f deploy_key -N ""`; `deploy_key.pub` goes into `/home/deploy/.ssh/authorized_keys` on the VM |
-| `PROD_SSH_KNOWN_HOSTS` | `20.198.10.15 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK...` | Output of `ssh-keyscan -t ed25519 20.198.10.15`; compare the fingerprint with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the VM |
+| `PROD_SSH_KNOWN_HOSTS` | `203.0.113.10 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK...` | Output of `ssh-keyscan -t ed25519 203.0.113.10`; compare the fingerprint with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the VM |
 | `PROD_SSH_USER` | `deploy` | Linux user on the VM, member of the `docker` group |
-| `PROD_VM1_HOST` | `20.198.10.15` or `vm1.dataplatform.example.com` | Address of VM 1 that GitHub's runners can reach |
+| `PROD_VM1_HOST` | `203.0.113.10` or `vm1.dataplatform.example.com` | Address of VM 1 that GitHub's runners can reach |
 
 App settings (written into `.env`; generate passwords with `openssl rand -hex 24`, URL-safe characters only):
 
